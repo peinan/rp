@@ -62,6 +62,10 @@ case "$action" in
             # Remove GitHub-specific paths (/tree/branch, /blob/branch, etc.)
             repo_path="${repo_path%%/tree/*}"
             repo_path="${repo_path%%/blob/*}"
+            # Add github.com prefix for short form (user/repo)
+            if [[ "$repo_path" != *.* ]]; then
+                repo_path="github.com/$repo_path"
+            fi
 
             ghq get "$2" && cd "$(ghq root)/$repo_path"
         fi

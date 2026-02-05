@@ -44,12 +44,22 @@ case "$action" in
         ;;
     "get"|"g")
         # Clone/get a new repository
+        local create_session=false
+        if [[ "$2" == "-s" ]]; then
+            create_session=true
+            shift
+        fi
+        local full_path
         if [[ -z "$2" ]]; then
             # Interactive mode: show remote repositories via gh + fzf
             local selected_repo
             selected_repo=$(gh repo list --limit 100 --json nameWithOwner --jq '.[].nameWithOwner' | fzf --height=50% --preview="gh repo view {} --json description,url,pushedAt --template '{{.description}}\n{{.url}}\nLast updated: {{.pushedAt}}'" --preview-window=down:5:wrap --prompt="Select repository to clone: ")
             if [[ -n "$selected_repo" ]]; then
-                ghq get "github.com/$selected_repo" && cd $(ghq root)/github.com/$selected_repo
+                full_path="$(ghq root)/github.com/$selected_repo"
+                ghq get "github.com/$selected_repo"
+                if [[ "$create_session" != true ]]; then
+                    cd "$full_path"
+                fi
             fi
         else
             # Normalize URL to path format for ghq
@@ -68,7 +78,23 @@ case "$action" in
                 repo_path="github.com/$repo_path"
             fi
 
-            ghq get "$2" && cd "$(ghq root)/$repo_path"
+            full_path="$(ghq root)/$repo_path"
+            ghq get "$2"
+            if [[ "$create_session" != true ]]; then
+                cd "$full_path"
+            fi
+        fi
+
+        if [[ "$create_session" == true && -n "$full_path" ]]; then
+            local session_name="$(basename "$full_path")"
+            session_name="${session_name//./_}"
+            if tmux has-session -t "$session_name" 2>/dev/null; then
+                echo "Session '$session_name' already exists. Switching to it."
+            else
+                tmux new-session -d -s "$session_name" -c "$full_path"
+                echo "Created tmux session: $session_name"
+            fi
+            tmux switch-client -t "$session_name" 2>/dev/null || tmux attach -t "$session_name"
         fi
         ;;
     "create"|"new"|"n")
@@ -142,9 +168,10 @@ Commands:
   list, l         List repositories with fzf selection
   cd, c           Change directory to selected repository
   remove, rm, r   Remove selected repository (with confirmation)
-  get, g [url]    Clone repository (interactive if no url)
-  create, new, n  Create and initialize a new repository
-                  Use -s to create and attach to a tmux session
+  get, g [-s] [url]    Clone repository (interactive if no url)
+                       Use -s to create and attach to a tmux session
+  create, new, n [-s]  Create and initialize a new repository
+                       Use -s to create and attach to a tmux session
   open, o [editor] Open repository in editor (default: code)
   help, h         Show this help message
 
@@ -153,6 +180,7 @@ Examples:
   repo cd                 # Change to selected repository
   repo get                # Interactive repository selection
   repo get github.com/user/repo
+  repo get -s user/repo   # Clone and attach to tmux session
   repo create github.com/user/new-repo
   repo create -s user/new-repo  # Create and attach to tmux session
   repo remove             # Remove selected repository

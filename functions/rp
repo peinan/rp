@@ -75,14 +75,20 @@ case "$action" in
         # Create a new repository directory
         if [[ -z "$2" ]]; then
             echo "Usage: repo create <repository_path>"
-            echo "Example: repo create github.com/user/new-repo"
+            echo "Example: repo create user/new-repo"
             return 1
         fi
-        local repo_path="$(ghq root)/$2"
-        mkdir -p "$repo_path"
-        cd "$repo_path" || return 1
+        local repo_path="$2"
+        # Add github.com prefix for short form (user/repo)
+        local first_segment="${repo_path%%/*}"
+        if [[ "$first_segment" != *.* ]]; then
+            repo_path="github.com/$repo_path"
+        fi
+        local full_path="$(ghq root)/$repo_path"
+        mkdir -p "$full_path"
+        cd "$full_path" || return 1
         git init
-        echo "Created and initialized: $2"
+        echo "Created and initialized: $repo_path"
         ;;
     "open"|"o")
         # Open repository in editor (default: code)

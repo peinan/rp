@@ -63,7 +63,8 @@ case "$action" in
             repo_path="${repo_path%%/tree/*}"
             repo_path="${repo_path%%/blob/*}"
             # Add github.com prefix for short form (user/repo)
-            if [[ "$repo_path" != *.* ]]; then
+            local first_segment="${repo_path%%/*}"
+            if [[ "$first_segment" != *.* ]]; then
                 repo_path="github.com/$repo_path"
             fi
 

@@ -5,6 +5,13 @@
 #
 
 
+local BOLD=$'\033[1m'
+local GREEN=$'\033[0;32m'
+local YELLOW=$'\033[0;33m'
+local CYAN=$'\033[0;36m'
+local GRAY=$'\033[38;5;242m'
+local NC=$'\033[0m'
+
 local action="${1:-cd}"
 
 _repo_tmux_open() {
@@ -182,44 +189,44 @@ case "$action" in
         ;;
     "help"|"h"|*)
         # Show help
-        cat << 'EOF'
-Repository management with ghq and fzf
+        cat << EOF
+${BOLD}Repository management with ghq and fzf${NC}
 
-Usage: repo <command> [args]
+${CYAN}Usage:${NC} repo <command> [args]
 
-Commands:
-  list, l              List repositories with fzf selection
-  cd, c [-s|-w]        Change directory to selected repository
-                       Use -s to create and attach to a tmux session
-                       Use -w to open in a new tmux window
-  remove, rm, r        Remove selected repository (with confirmation)
-  get, g [-s|-w] [url] Clone repository (interactive if no url)
-                       Use -s to create and attach to a tmux session
-                       Use -w to open in a new tmux window
-  create, new, n [-s|-w]  Create and initialize a new repository
-                       Use -s to create and attach to a tmux session
-                       Use -w to open in a new tmux window
-  open, o [editor]     Open repository in editor (default: code)
-  help, h              Show this help message
+${CYAN}Commands:${NC}
+  ${GREEN}list, l${NC}              List repositories with fzf selection
+  ${GREEN}cd, c${NC} ${YELLOW}[-s|-w]${NC}        Change directory to selected repository
+                       Use ${YELLOW}-s${NC} to create and attach to a tmux session
+                       Use ${YELLOW}-w${NC} to open in a new tmux window
+  ${GREEN}remove, rm, r${NC}        Remove selected repository (with confirmation)
+  ${GREEN}get, g${NC} ${YELLOW}[-s|-w] [url]${NC} Clone repository (interactive if no url)
+                       Use ${YELLOW}-s${NC} to create and attach to a tmux session
+                       Use ${YELLOW}-w${NC} to open in a new tmux window
+  ${GREEN}create, new, n${NC} ${YELLOW}[-s|-w]${NC}  Create and initialize a new repository
+                       Use ${YELLOW}-s${NC} to create and attach to a tmux session
+                       Use ${YELLOW}-w${NC} to open in a new tmux window
+  ${GREEN}open, o${NC} ${YELLOW}[editor]${NC}     Open repository in editor (default: code)
+  ${GREEN}help, h${NC}              Show this help message
 
-Examples:
-  repo                    # List repositories and change to the selected repository
-  repo cd                 # Change to selected repository
-  repo cd -s              # Change to selected repository in tmux session
-  repo cd -w              # Change to selected repository in new tmux window
-  repo get                # Interactive repository selection
+${CYAN}Examples:${NC}
+  repo                    ${GRAY}# List repositories and change to the selected repository${NC}
+  repo cd                 ${GRAY}# Change to selected repository${NC}
+  repo cd -s              ${GRAY}# Change to selected repository in tmux session${NC}
+  repo cd -w              ${GRAY}# Change to selected repository in new tmux window${NC}
+  repo get                ${GRAY}# Interactive repository selection${NC}
   repo get github.com/user/repo
-  repo get -s user/repo   # Clone and attach to tmux session
-  repo get -w user/repo   # Clone and open in new tmux window
+  repo get -s user/repo   ${GRAY}# Clone and attach to tmux session${NC}
+  repo get -w user/repo   ${GRAY}# Clone and open in new tmux window${NC}
   repo create github.com/user/new-repo
-  repo create -s user/new-repo  # Create and attach to tmux session
-  repo create -w user/new-repo  # Create and open in new tmux window
-  repo remove             # Remove selected repository
-  repo open               # Open repository in code (default)
-  repo open vim           # Open repository in vim
-  repo open nvim          # Open repository in neovim
+  repo create -s user/new-repo  ${GRAY}# Create and attach to tmux session${NC}
+  repo create -w user/new-repo  ${GRAY}# Create and open in new tmux window${NC}
+  repo remove             ${GRAY}# Remove selected repository${NC}
+  repo open               ${GRAY}# Open repository in code (default)${NC}
+  repo open vim           ${GRAY}# Open repository in vim${NC}
+  repo open nvim          ${GRAY}# Open repository in neovim${NC}
 
-Requirements: ghq, fzf, git, gh (for interactive get)
+${CYAN}Requirements:${NC} ghq, fzf, git, gh (for interactive get)
 EOF
             ;;
 esac

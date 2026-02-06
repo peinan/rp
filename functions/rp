@@ -7,6 +7,25 @@
 
 local action="${1:-cd}"
 
+_repo_tmux_open() {
+    local mode="$1"
+    local target_path="$2"
+    local name="$(basename "$target_path")"
+    name="${name//./_}"
+
+    if [[ "$mode" == "session" ]]; then
+        if tmux has-session -t "$name" 2>/dev/null; then
+            echo "Session '$name' already exists. Switching to it."
+        else
+            tmux new-session -d -s "$name" -c "$target_path"
+            echo "Created tmux session: $name"
+        fi
+        tmux switch-client -t "$name" 2>/dev/null || tmux attach -t "$name"
+    elif [[ "$mode" == "window" ]]; then
+        tmux new-window -c "$target_path"
+    fi
+}
+
 case "$action" in
     "list"|"l")
         # List all repositories with fzf selection
@@ -19,10 +38,23 @@ case "$action" in
         ;;
     "cd"|"c")
         # Change directory to selected repository
+        local tmux_mode=""
+        if [[ "$2" == "-s" ]]; then
+            tmux_mode="session"
+            shift
+        elif [[ "$2" == "-w" ]]; then
+            tmux_mode="window"
+            shift
+        fi
         local selected_repo
         selected_repo=$(ghq list | fzf --height=~20% --preview="eza $(ghq root)/{} --color=always" --preview-window=down:3:wrap)
         if [[ -n "$selected_repo" ]]; then
-            cd "$(ghq root)/$selected_repo" || return 1
+            local full_path="$(ghq root)/$selected_repo"
+            if [[ -n "$tmux_mode" ]]; then
+                _repo_tmux_open "$tmux_mode" "$full_path"
+            else
+                cd "$full_path" || return 1
+            fi
         fi
         ;;
     "remove"|"rm"|"r")
@@ -44,9 +76,12 @@ case "$action" in
         ;;
     "get"|"g")
         # Clone/get a new repository
-        local create_session=false
+        local tmux_mode=""
         if [[ "$2" == "-s" ]]; then
-            create_session=true
+            tmux_mode="session"
+            shift
+        elif [[ "$2" == "-w" ]]; then
+            tmux_mode="window"
             shift
         fi
         local full_path
@@ -57,7 +92,7 @@ case "$action" in
             if [[ -n "$selected_repo" ]]; then
                 full_path="$(ghq root)/github.com/$selected_repo"
                 ghq get "github.com/$selected_repo"
-                if [[ "$create_session" != true ]]; then
+                if [[ -z "$tmux_mode" ]]; then
                     cd "$full_path"
                 fi
             fi
@@ -80,33 +115,29 @@ case "$action" in
 
             full_path="$(ghq root)/$repo_path"
             ghq get "$2"
-            if [[ "$create_session" != true ]]; then
+            if [[ -z "$tmux_mode" ]]; then
                 cd "$full_path"
             fi
         fi
 
-        if [[ "$create_session" == true && -n "$full_path" ]]; then
-            local session_name="$(basename "$full_path")"
-            session_name="${session_name//./_}"
-            if tmux has-session -t "$session_name" 2>/dev/null; then
-                echo "Session '$session_name' already exists. Switching to it."
-            else
-                tmux new-session -d -s "$session_name" -c "$full_path"
-                echo "Created tmux session: $session_name"
-            fi
-            tmux switch-client -t "$session_name" 2>/dev/null || tmux attach -t "$session_name"
+        if [[ -n "$tmux_mode" && -n "$full_path" ]]; then
+            _repo_tmux_open "$tmux_mode" "$full_path"
         fi
         ;;
     "create"|"new"|"n")
         # Create a new repository directory
-        local create_session=false
+        local tmux_mode=""
         if [[ "$2" == "-s" ]]; then
-            create_session=true
+            tmux_mode="session"
+            shift
+        elif [[ "$2" == "-w" ]]; then
+            tmux_mode="window"
             shift
         fi
         if [[ -z "$2" ]]; then
-            echo "Usage: repo create [-s] <repository_path>"
+            echo "Usage: repo create [-s|-w] <repository_path>"
             echo "  -s  Create and attach to a new tmux session"
+            echo "  -w  Open in a new tmux window"
             echo "Example: repo create user/new-repo"
             return 1
         fi
@@ -119,21 +150,13 @@ case "$action" in
         local full_path="$(ghq root)/$repo_path"
         mkdir -p "$full_path"
         git -C "$full_path" init
-        if [[ "$create_session" != true ]]; then
+        if [[ -z "$tmux_mode" ]]; then
             cd "$full_path" || return 1
         fi
         echo "Created and initialized: $repo_path"
 
-        if [[ "$create_session" == true ]]; then
-            local session_name="$(basename "$full_path")"
-            session_name="${session_name//./_}"
-            if tmux has-session -t "$session_name" 2>/dev/null; then
-                echo "Session '$session_name' already exists. Switching to it."
-            else
-                tmux new-session -d -s "$session_name" -c "$full_path"
-                echo "Created tmux session: $session_name"
-            fi
-            tmux switch-client -t "$session_name" 2>/dev/null || tmux attach -t "$session_name"
+        if [[ -n "$tmux_mode" ]]; then
+            _repo_tmux_open "$tmux_mode" "$full_path"
         fi
         ;;
     "open"|"o")
@@ -165,24 +188,32 @@ Repository management with ghq and fzf
 Usage: repo <command> [args]
 
 Commands:
-  list, l         List repositories with fzf selection
-  cd, c           Change directory to selected repository
-  remove, rm, r   Remove selected repository (with confirmation)
-  get, g [-s] [url]    Clone repository (interactive if no url)
+  list, l              List repositories with fzf selection
+  cd, c [-s|-w]        Change directory to selected repository
                        Use -s to create and attach to a tmux session
-  create, new, n [-s]  Create and initialize a new repository
+                       Use -w to open in a new tmux window
+  remove, rm, r        Remove selected repository (with confirmation)
+  get, g [-s|-w] [url] Clone repository (interactive if no url)
                        Use -s to create and attach to a tmux session
-  open, o [editor] Open repository in editor (default: code)
-  help, h         Show this help message
+                       Use -w to open in a new tmux window
+  create, new, n [-s|-w]  Create and initialize a new repository
+                       Use -s to create and attach to a tmux session
+                       Use -w to open in a new tmux window
+  open, o [editor]     Open repository in editor (default: code)
+  help, h              Show this help message
 
 Examples:
   repo                    # List repositories and change to the selected repository
   repo cd                 # Change to selected repository
+  repo cd -s              # Change to selected repository in tmux session
+  repo cd -w              # Change to selected repository in new tmux window
   repo get                # Interactive repository selection
   repo get github.com/user/repo
   repo get -s user/repo   # Clone and attach to tmux session
+  repo get -w user/repo   # Clone and open in new tmux window
   repo create github.com/user/new-repo
   repo create -s user/new-repo  # Create and attach to tmux session
+  repo create -w user/new-repo  # Create and open in new tmux window
   repo remove             # Remove selected repository
   repo open               # Open repository in code (default)
   repo open vim           # Open repository in vim

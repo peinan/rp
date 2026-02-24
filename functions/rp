@@ -13,6 +13,18 @@ local GRAY=$'\033[38;5;242m'
 local NC=$'\033[0m'
 
 local action="${1:-cd}"
+local query=""
+case "$action" in
+    list|l|cd|c|remove|rm|r|get|g|create|new|n|open|o|help|h)
+        ;;
+    -*)
+        action="help"
+        ;;
+    *)
+        query="$action"
+        action="cd"
+        ;;
+esac
 
 _repo_tmux_open() {
     local mode="$1"
@@ -63,8 +75,15 @@ case "$action" in
         # Change directory to selected repository
         local tmux_mode=""
         _repo_parse_tmux_opt "$2" && shift
+        local fuzzy_query="${query:-$2}"
         local selected_repo
-        selected_repo=$(ghq list | fzf --height=~20% --preview="eza $(ghq root)/{} --color=always" --preview-window=down:3:wrap)
+        if [[ -n "$fuzzy_query" ]]; then
+            # Non-interactive fuzzy match: pick best result
+            selected_repo=$(ghq list | fzf --filter="$fuzzy_query" | head -1)
+        else
+            # Interactive mode: open fzf selector
+            selected_repo=$(ghq list | fzf --height=~20% --preview="eza $(ghq root)/{} --color=always" --preview-window=down:3:wrap)
+        fi
         if [[ -n "$selected_repo" ]]; then
             local full_path="$(ghq root)/$selected_repo"
             if [[ -n "$tmux_mode" ]]; then
@@ -194,7 +213,8 @@ ${CYAN}Usage:${NC} rp <command> [args]
 
 ${CYAN}Commands:${NC}
   ${GREEN}list, l${NC}                 List repositories with fzf selection
-  ${GREEN}cd, c${NC} ${YELLOW}[-s|-w]${NC}           Change directory to selected repository
+  ${GREEN}cd, c${NC} ${YELLOW}[-s|-w] [query]${NC}    Change directory to selected repository
+                          If ${YELLOW}query${NC} is given, fuzzy match and cd to best match
                           Use ${YELLOW}-s${NC}, ${YELLOW}--tmux-session${NC} to create and attach to a tmux session
                           Use ${YELLOW}-w${NC}, ${YELLOW}--tmux-window${NC} to open in a new tmux window
   ${GREEN}remove, rm, r${NC}           Remove selected repository (with confirmation)
@@ -210,7 +230,10 @@ ${CYAN}Commands:${NC}
 ${CYAN}Examples:${NC}
   rp                    ${GRAY}# List repositories and change to the selected repository${NC}
   rp cd                 ${GRAY}# Change to selected repository${NC}
+  rp dot                ${GRAY}# Fuzzy match "dot" and cd to best match (e.g. dotfiles)${NC}
+  rp cd dot             ${GRAY}# Same as above (explicit cd subcommand)${NC}
   rp cd -s              ${GRAY}# Change to selected repository in tmux session${NC}
+  rp cd -s dot          ${GRAY}# Fuzzy match + tmux session${NC}
   rp cd -w              ${GRAY}# Change to selected repository in new tmux window${NC}
   rp cd --tmux-session  ${GRAY}# Same as -s (long option)${NC}
   rp get                ${GRAY}# Interactive repository selection${NC}

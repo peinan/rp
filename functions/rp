@@ -213,7 +213,7 @@ ${CYAN}Usage:${NC} rp <command> [args]
 
 ${CYAN}Commands:${NC}
   ${GREEN}list, l${NC}                 List repositories with fzf selection
-  ${GREEN}cd, c${NC} ${YELLOW}[-s|-w] [query]${NC}    Change directory to selected repository
+  ${GREEN}cd, c${NC} ${YELLOW}[-s|-w] [query]${NC}   Change directory to selected repository
                           If ${YELLOW}query${NC} is given, fuzzy match and cd to best match
                           Use ${YELLOW}-s${NC}, ${YELLOW}--tmux-session${NC} to create and attach to a tmux session
                           Use ${YELLOW}-w${NC}, ${YELLOW}--tmux-window${NC} to open in a new tmux window

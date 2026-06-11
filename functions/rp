@@ -61,6 +61,43 @@ _repo_parse_tmux_opt() {
     esac
 }
 
+_repo_herdr_open() {
+    local mode="$1"
+    local target_path="$2"
+    local name="$(basename "$target_path")"
+    name="${name//./_}"
+
+    if [[ "$mode" == "session" ]]; then
+        # workspace = tmux session 相当。label 一致で冪等に focus、無ければ create
+        local existing
+        existing=$(herdr workspace list 2>/dev/null \
+            | jq -r --arg l "$name" '.result.workspaces[] | select(.label == $l) | .workspace_id' \
+            | head -1)
+        if [[ -n "$existing" ]]; then
+            herdr workspace focus "$existing"
+            echo "Focused herdr workspace: $name"
+        else
+            herdr workspace create --cwd "$target_path" --label "$name" --focus
+            echo "Created herdr workspace: $name"
+        fi
+    elif [[ "$mode" == "window" ]]; then
+        # tab = tmux window 相当。tmux 版同様、毎回新規
+        herdr tab create --cwd "$target_path" --label "$name" --focus
+        echo "Created herdr tab: $name"
+    fi
+}
+
+_repo_mux_open() {
+    local mode="$1"
+    local target_path="$2"
+    # herdr の中なら herdr、それ以外は tmux（in/out 両対応）
+    if [[ -n "$HERDR_ENV" ]]; then
+        _repo_herdr_open "$mode" "$target_path"
+    else
+        _repo_tmux_open "$mode" "$target_path"
+    fi
+}
+
 case "$action" in
     "list"|"l")
         # List all repositories with fzf selection
@@ -87,7 +124,7 @@ case "$action" in
         if [[ -n "$selected_repo" ]]; then
             local full_path="$(ghq root)/$selected_repo"
             if [[ -n "$tmux_mode" ]]; then
-                _repo_tmux_open "$tmux_mode" "$full_path"
+                _repo_mux_open "$tmux_mode" "$full_path"
             else
                 cd "$full_path" || return 1
             fi
@@ -151,7 +188,7 @@ case "$action" in
         fi
 
         if [[ -n "$tmux_mode" && -n "$full_path" ]]; then
-            _repo_tmux_open "$tmux_mode" "$full_path"
+            _repo_mux_open "$tmux_mode" "$full_path"
         fi
         ;;
     "create"|"new"|"n")
@@ -180,7 +217,7 @@ case "$action" in
         echo "Created and initialized: $repo_path"
 
         if [[ -n "$tmux_mode" ]]; then
-            _repo_tmux_open "$tmux_mode" "$full_path"
+            _repo_mux_open "$tmux_mode" "$full_path"
         fi
         ;;
     "open"|"o")
@@ -215,19 +252,20 @@ ${CYAN}Commands:${NC}
   ${GREEN}list, l${NC}                 List repositories with fzf selection
   ${GREEN}cd, c${NC} ${YELLOW}[-s|-w] [query]${NC}   Change directory to selected repository
                           If ${YELLOW}query${NC} is given, fuzzy match and cd to best match
-                          Use ${YELLOW}-s${NC}, ${YELLOW}--tmux-session${NC} to create and attach to a tmux session
-                          Use ${YELLOW}-w${NC}, ${YELLOW}--tmux-window${NC} to open in a new tmux window
+                          Use ${YELLOW}-s${NC}, ${YELLOW}--tmux-session${NC} to open a session (tmux session / herdr workspace)
+                          Use ${YELLOW}-w${NC}, ${YELLOW}--tmux-window${NC} to open in a new window (tmux window / herdr tab)
   ${GREEN}remove, rm, r${NC}           Remove selected repository (with confirmation)
   ${GREEN}get, g${NC} ${YELLOW}[-s|-w] [url]${NC}    Clone repository (interactive if no url)
-                          Use ${YELLOW}-s${NC}, ${YELLOW}--tmux-session${NC} to create and attach to a tmux session
-                          Use ${YELLOW}-w${NC}, ${YELLOW}--tmux-window${NC} to open in a new tmux window
+                          Use ${YELLOW}-s${NC}, ${YELLOW}--tmux-session${NC} to open a session (tmux session / herdr workspace)
+                          Use ${YELLOW}-w${NC}, ${YELLOW}--tmux-window${NC} to open in a new window (tmux window / herdr tab)
   ${GREEN}create, new, n${NC} ${YELLOW}[-s|-w]${NC}  Create and initialize a new repository
-                          Use ${YELLOW}-s${NC}, ${YELLOW}--tmux-session${NC} to create and attach to a tmux session
-                          Use ${YELLOW}-w${NC}, ${YELLOW}--tmux-window${NC} to open in a new tmux window
+                          Use ${YELLOW}-s${NC}, ${YELLOW}--tmux-session${NC} to open a session (tmux session / herdr workspace)
+                          Use ${YELLOW}-w${NC}, ${YELLOW}--tmux-window${NC} to open in a new window (tmux window / herdr tab)
   ${GREEN}open, o${NC} ${YELLOW}[editor]${NC}        Open repository in editor (default: code)
   ${GREEN}help, h${NC}                 Show this help message
 
 ${CYAN}Examples:${NC}
+  ${GRAY}# -s/-w follow the current multiplexer: herdr workspace/tab inside herdr, otherwise tmux session/window${NC}
   rp                    ${GRAY}# List repositories and change to the selected repository${NC}
   rp cd                 ${GRAY}# Change to selected repository${NC}
   rp dot                ${GRAY}# Fuzzy match "dot" and cd to best match (e.g. dotfiles)${NC}
@@ -249,7 +287,7 @@ ${CYAN}Examples:${NC}
   rp open vim           ${GRAY}# Open repository in vim${NC}
   rp open nvim          ${GRAY}# Open repository in neovim${NC}
 
-${CYAN}Requirements:${NC} ghq, fzf, git, gh (for interactive get)
+${CYAN}Requirements:${NC} ghq, fzf, git, gh (interactive get), jq + herdr (for -s/-w inside herdr)
 EOF
             ;;
 esac

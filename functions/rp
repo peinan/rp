@@ -74,15 +74,15 @@ _repo_herdr_open() {
             | jq -r --arg l "$name" '.result.workspaces[] | select(.label == $l) | .workspace_id' \
             | head -1)
         if [[ -n "$existing" ]]; then
-            herdr workspace focus "$existing"
+            herdr workspace focus "$existing" > /dev/null
             echo "Focused herdr workspace: $name"
         else
-            herdr workspace create --cwd "$target_path" --label "$name" --focus
+            herdr workspace create --cwd "$target_path" --label "$name" --focus > /dev/null
             echo "Created herdr workspace: $name"
         fi
     elif [[ "$mode" == "window" ]]; then
         # tab = tmux window 相当。tmux 版同様、毎回新規
-        herdr tab create --cwd "$target_path" --label "$name" --focus
+        herdr tab create --cwd "$target_path" --label "$name" --focus > /dev/null
         echo "Created herdr tab: $name"
     fi
 }

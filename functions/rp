@@ -15,7 +15,7 @@ local NC=$'\033[0m'
 local action="${1:-cd}"
 local query=""
 case "$action" in
-    list|l|cd|c|remove|rm|r|get|g|create|new|n|open|o|help|h)
+    list|l|cd|c|path|p|remove|rm|r|get|g|create|new|n|open|o|help|h)
         ;;
     -*)
         action="help"
@@ -128,6 +128,21 @@ case "$action" in
             else
                 cd "$full_path" || return 1
             fi
+        fi
+        ;;
+    "path"|"p")
+        # Print the path of the selected repository (no cd; for use in $(...))
+        local fuzzy_query="${query:-$2}"
+        local selected_repo
+        if [[ -n "$fuzzy_query" ]]; then
+            # Non-interactive fuzzy match: pick best result
+            selected_repo=$(ghq list | fzf --filter="$fuzzy_query" | head -1)
+        else
+            # Interactive mode: open fzf selector
+            selected_repo=$(ghq list | fzf --height=~20% --preview="eza $(ghq root)/{} --color=always" --preview-window=down:3:wrap)
+        fi
+        if [[ -n "$selected_repo" ]]; then
+            echo "$(ghq root)/$selected_repo"
         fi
         ;;
     "remove"|"rm"|"r")
@@ -254,6 +269,8 @@ ${CYAN}Commands:${NC}
                           If ${YELLOW}query${NC} is given, fuzzy match and cd to best match
                           Use ${YELLOW}-s${NC}, ${YELLOW}--tmux-session${NC} to open a session (tmux session / herdr workspace)
                           Use ${YELLOW}-w${NC}, ${YELLOW}--tmux-window${NC} to open in a new window (tmux window / herdr tab)
+  ${GREEN}path, p${NC} ${YELLOW}[query]${NC}         Print path of selected repository (no cd)
+                          If ${YELLOW}query${NC} is given, fuzzy match and print best match
   ${GREEN}remove, rm, r${NC}           Remove selected repository (with confirmation)
   ${GREEN}get, g${NC} ${YELLOW}[-s|-w] [url]${NC}    Clone repository (interactive if no url)
                           Use ${YELLOW}-s${NC}, ${YELLOW}--tmux-session${NC} to open a session (tmux session / herdr workspace)
@@ -275,6 +292,9 @@ ${CYAN}Examples:${NC}
   rp cd -s dot          ${GRAY}# Fuzzy match + tmux session / herdr workspace${NC}
   rp cd -w              ${GRAY}# Change to selected repository in a new tmux window / herdr tab${NC}
   rp cd --tmux-session  ${GRAY}# Same as -s (long option)${NC}
+  rp path               ${GRAY}# Print path of selected repository${NC}
+  rp path dot           ${GRAY}# Print path of best fuzzy match (e.g. dotfiles)${NC}
+  cd "\$(rp path dot)"   ${GRAY}# Use the path in command substitution${NC}
   rp get                ${GRAY}# Interactive repository selection${NC}
   rp get github.com/user/repo
   rp get -s user/repo   ${GRAY}# Clone and open in a new tmux session / herdr workspace${NC}

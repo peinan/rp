@@ -1,0 +1,112 @@
+# herdr plugin manifest. Install with `herdr plugin install peinan/rp`; for a local
+# checkout use `herdr plugin link /path/to/rp`. See "Herdr plugin" in README.md.
+#
+# This file is unrelated to the zsh plugin (rp.plugin.zsh, functions/): zsh plugin
+# managers ignore it, and herdr ignores them.
+
+id = "rp"
+name = "rp"
+version = "0.2.0"
+# Verified against 0.9.0: popup panes with width/height and `herdr plugin pane open`.
+min_herdr_version = "0.9.0"
+description = "Jump between ghq-managed repositories with fzf"
+# functions/rp is zsh, which the Windows beta does not have.
+platforms = ["linux", "macos"]
+
+# Actions are what keybindings can invoke. They run without a TTY, so each one only
+# asks herdr to open the pane of the same name (herdr/action.zsh). Bind one with:
+#
+#   [[keys.command]]
+#   key = "prefix+ctrl+r"
+#   type = "plugin_action"
+#   command = "rp.cd-workspace"
+
+[[actions]]
+id = "cd-workspace"
+title = "rp: jump to repository (workspace)"
+contexts = ["global", "workspace"]
+command = ["zsh", "herdr/action.zsh", "cd-workspace"]
+
+[[actions]]
+id = "cd-tab"
+title = "rp: jump to repository (tab)"
+contexts = ["global", "workspace"]
+command = ["zsh", "herdr/action.zsh", "cd-tab"]
+
+[[actions]]
+id = "get-workspace"
+title = "rp: clone repository (workspace)"
+contexts = ["global", "workspace"]
+command = ["zsh", "herdr/action.zsh", "get-workspace"]
+
+[[actions]]
+id = "get-tab"
+title = "rp: clone repository (tab)"
+contexts = ["global", "workspace"]
+command = ["zsh", "herdr/action.zsh", "get-tab"]
+
+[[actions]]
+id = "create-workspace"
+title = "rp: create repository (workspace)"
+contexts = ["global", "workspace"]
+command = ["zsh", "herdr/action.zsh", "create-workspace"]
+
+[[actions]]
+id = "create-tab"
+title = "rp: create repository (tab)"
+contexts = ["global", "workspace"]
+command = ["zsh", "herdr/action.zsh", "create-tab"]
+
+# Panes are real terminals. Each entrypoint runs one fixed rp invocation through
+# herdr/pane.zsh, which autoloads functions/rp from this checkout, and the popup
+# closes when rp exits. `command` is argv (no shell), hence the explicit `zsh -c`;
+# the script is addressed through $HERDR_PLUGIN_ROOT so a --cwd override on
+# `herdr plugin pane open` cannot break it.
+
+[[panes]]
+id = "cd-workspace"
+title = "rp"
+placement = "popup"
+width = "80%"
+height = "60%"
+command = ["zsh", "-c", 'exec "$HERDR_PLUGIN_ROOT/herdr/pane.zsh" cd -s']
+
+[[panes]]
+id = "cd-tab"
+title = "rp"
+placement = "popup"
+width = "80%"
+height = "60%"
+command = ["zsh", "-c", 'exec "$HERDR_PLUGIN_ROOT/herdr/pane.zsh" cd -w']
+
+[[panes]]
+id = "get-workspace"
+title = "rp"
+placement = "popup"
+width = "80%"
+height = "60%"
+command = ["zsh", "-c", 'exec "$HERDR_PLUGIN_ROOT/herdr/pane.zsh" get -s']
+
+[[panes]]
+id = "get-tab"
+title = "rp"
+placement = "popup"
+width = "80%"
+height = "60%"
+command = ["zsh", "-c", 'exec "$HERDR_PLUGIN_ROOT/herdr/pane.zsh" get -w']
+
+[[panes]]
+id = "create-workspace"
+title = "rp"
+placement = "popup"
+width = "60%"
+height = 6
+command = ["zsh", "-c", 'exec "$HERDR_PLUGIN_ROOT/herdr/pane.zsh" create -s']
+
+[[panes]]
+id = "create-tab"
+title = "rp"
+placement = "popup"
+width = "60%"
+height = 6
+command = ["zsh", "-c", 'exec "$HERDR_PLUGIN_ROOT/herdr/pane.zsh" create -w']

@@ -100,15 +100,15 @@ _repo_herdr_open() {
             | jq -r --arg l "$name" '.result.workspaces[] | select(.label == $l) | .workspace_id' \
             | head -1)
         if [[ -n "$existing" ]]; then
-            herdr workspace focus "$existing" > /dev/null
+            herdr workspace focus "$existing" > /dev/null || return 1
             echo "Focused herdr workspace: $name"
         else
-            herdr workspace create --cwd "$target_path" --label "$name" --focus > /dev/null
+            herdr workspace create --cwd "$target_path" --label "$name" --focus > /dev/null || return 1
             echo "Created herdr workspace: $name"
         fi
     elif [[ "$mode" == "window" ]]; then
         # tab = tmux window 相当。tmux 版同様、毎回新規
-        herdr tab create --cwd "$target_path" --label "$name" --focus > /dev/null
+        herdr tab create --cwd "$target_path" --label "$name" --focus > /dev/null || return 1
         echo "Created herdr tab: $name"
     fi
 }
@@ -272,8 +272,11 @@ _repo_hub_menu() {
     local mode="$1"
     local rel="$2"
     local root="$(ghq root)"
-    local -a items=(
-        "here"$'\t'"cd here"
+    local -a items=()
+    # A herdr plugin popup does not outlive the picker, so cd-ing it changes
+    # nothing the user can see (herdr/pane.zsh sets RP_NO_CD).
+    [[ -n "$RP_NO_CD" ]] || items+=("here"$'\t'"cd here")
+    items+=(
         "session"$'\t'"new $label_session"
         "window"$'\t'"new $label_window"
         "editor"$'\t'"open in editor"
@@ -319,12 +322,21 @@ _repo_hub_pick() {
     # user is already looking, instead of silently emptying it.
     local cmd_remote='gh repo list --limit 100 --json nameWithOwner --jq ".[].nameWithOwner" 2>&1'
 
+    # In a popup that does not outlive the picker there is nothing to cd, so
+    # enter opens a workspace and ^S would only duplicate it in the guide.
+    local -a enter_local=(enter cd '^S' "$label_session")
+    local -a enter_remote=(enter clone+cd '^S' "clone+$label_session")
+    if [[ -n "$RP_NO_CD" ]]; then
+        enter_local=(enter "$label_session")
+        enter_remote=(enter "clone+$label_session")
+    fi
+
     # Every ^X key is quoted: rp is autoloaded into the user's shell and keeps
     # their options, and under extended_glob a bare ^S is a glob negation.
     local footer_local="$(_repo_hub_footer \
-        enter cd '^S' "$label_session" '^T' "$label_window" '^O' actions '^R' new '^X' del)"
+        "$enter_local[@]" '^T' "$label_window" '^O' actions '^R' new '^X' del)"
     local footer_remote="$(_repo_hub_footer \
-        enter clone+cd '^S' "clone+$label_session" '^T' "clone+$label_window" '^O' actions)"
+        "$enter_remote[@]" '^T' "clone+$label_window" '^O' actions)"
     if (( have_gh )); then
         footer_local+="  $(_repo_hub_footer '^G' remote)"
         footer_remote+="  $(_repo_hub_footer '^G' local)"
@@ -347,8 +359,10 @@ _repo_hub_pick() {
     # bind parser counts the delimiter pair and a body containing print(...)
     # would close it early. Plain accept everywhere, never accept-non-empty:
     # that would queue a token without exiting and shift the output lines.
+    local enter_dest=here
+    [[ -n "$RP_NO_CD" ]] && enter_dest=session
     local -a fzf_args=(
-        --bind 'enter:print(here)+accept'
+        --bind "enter:print($enter_dest)+accept"
         --bind 'ctrl-s:print(session)+accept'
         --bind 'ctrl-t:print(window)+accept'
         --bind 'ctrl-o:print(menu)+accept'

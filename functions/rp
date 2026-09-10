@@ -15,7 +15,7 @@ local NC=$'\033[0m'
 local action="${1:-hub}"
 local query=""
 case "$action" in
-    hub|list|l|cd|c|path|p|remove|rm|r|get|g|create|new|n|open|o|help|h)
+    hub|list|ls|cd|c|path|p|remove|rm|r|get|g|create|new|n|open|o|help|h)
         ;;
     -*)
         action="help"
@@ -247,6 +247,22 @@ _repo_hub_new_name() {
     _repo_qualify_host "$name"
 }
 
+_repo_hub_footer() {
+    # key label ... -> one footer line. The key carries the colour and the
+    # label stays dim: a footer is scanned for the key, not read.
+    # Re-emitted inside change-footer(...), so the result must stay one line
+    # and contain none of  +  )  }
+    # GREEN before BOLD, never the reverse: GREEN starts with a 0 (reset all),
+    # which would switch the bold straight back off.
+    local out=""
+    while (( $# )); do
+        [[ -n "$out" ]] && out+="  "
+        out+="${GREEN}${BOLD}$1${NC} ${GRAY}$2${NC}"
+        shift 2
+    done
+    print -r -- "$out"
+}
+
 _repo_hub_menu() {
     # Stage 2: the operation x destination product, flattened into one
     # searchable list. Prints a single action token. $1 is "repo" for an
@@ -282,7 +298,7 @@ _repo_hub_menu() {
         fzf --height=~40% \
             --delimiter="\t" --with-nth=2 --accept-nth=1 \
             --prompt="$prompt" \
-            --footer="${GRAY}esc cancel${NC}" --footer-border
+            --footer="$(_repo_hub_footer esc cancel)" --footer-border
 }
 
 _repo_hub_pick() {
@@ -303,13 +319,15 @@ _repo_hub_pick() {
     # user is already looking, instead of silently emptying it.
     local cmd_remote='gh repo list --limit 100 --json nameWithOwner --jq ".[].nameWithOwner" 2>&1'
 
-    # Re-emitted inside change-footer(...), so these must stay one line and
-    # contain none of  +  )  }
-    local footer_local="enter cd  ^S $label_session  ^T $label_window  ^O actions  ^R new  ^X del"
-    local footer_remote="enter clone+cd  ^S clone+$label_session  ^T clone+$label_window  ^O actions"
+    # Every ^X key is quoted: rp is autoloaded into the user's shell and keeps
+    # their options, and under extended_glob a bare ^S is a glob negation.
+    local footer_local="$(_repo_hub_footer \
+        enter cd '^S' "$label_session" '^T' "$label_window" '^O' actions '^R' new '^X' del)"
+    local footer_remote="$(_repo_hub_footer \
+        enter clone+cd '^S' "clone+$label_session" '^T' "clone+$label_window" '^O' actions)"
     if (( have_gh )); then
-        footer_local+="  ^G remote"
-        footer_remote+="  ^G local"
+        footer_local+="  $(_repo_hub_footer '^G' remote)"
+        footer_remote+="  $(_repo_hub_footer '^G' local)"
     fi
 
     # fzf runs every template with $SHELL -c, so these bodies are POSIX:
@@ -487,7 +505,7 @@ case "$action" in
                 ;;
         esac
         ;;
-    "list"|"l")
+    "list"|"ls")
         # List all repositories with fzf selection
         local selected_repo
         selected_repo=$(ghq list | fzf --height=~20% --preview="eza $(ghq root)/{} --color=always" --preview-window=down:3:wrap)
@@ -602,8 +620,8 @@ ${BOLD}Repository management with ghq and fzf${NC}
 ${CYAN}Usage:${NC} rp <command> [args]
 
 ${CYAN}Commands:${NC}
-  ${GREEN}hub${NC}                     Pick a repository first, then choose an action (default)
-  ${GREEN}list, l${NC}                 List repositories with fzf selection
+  ${GRAY}(no command),${NC} ${GREEN}hub${NC}       Hub mode: pick a repository first, then choose an action
+  ${GREEN}list, ls${NC}                List repositories with fzf selection
   ${GREEN}cd, c${NC} ${YELLOW}[-s|-w] [query]${NC}   Change directory to selected repository
                           If ${YELLOW}query${NC} is given, fuzzy match and cd to best match
                           Use ${YELLOW}-s${NC}, ${YELLOW}--tmux-session${NC} to open a session (tmux session / herdr workspace)
@@ -620,7 +638,7 @@ ${CYAN}Commands:${NC}
   ${GREEN}open, o${NC} ${YELLOW}[editor]${NC}        Open repository in editor (default: code)
   ${GREEN}help, h${NC}                 Show this help message
 
-${CYAN}Hub keys${NC} ${GRAY}(bare ${NC}rp${GRAY}, or ${NC}rp hub${GRAY}):${NC}
+${CYAN}Hub mode keys${NC} ${GRAY}(bare ${NC}rp${GRAY}, or ${NC}rp hub${GRAY}):${NC}
   ${GREEN}enter${NC}                   cd to the selected repository
   ${GREEN}^S${NC}                      Open it as a session (tmux session / herdr workspace)
   ${GREEN}^T${NC}                      Open it in a new window (tmux window / herdr tab)
@@ -633,7 +651,7 @@ ${CYAN}Hub keys${NC} ${GRAY}(bare ${NC}rp${GRAY}, or ${NC}rp hub${GRAY}):${NC}
 ${CYAN}Examples:${NC}
   ${GRAY}# -s/-w auto-select the multiplexer (herdr inside herdr, otherwise tmux):${NC}
   ${GRAY}#   -s = tmux session / herdr workspace,  -w = tmux window / herdr tab${NC}
-  rp                    ${GRAY}# Pick a repository, then choose an action (enter = cd)${NC}
+  rp                    ${GRAY}# Hub mode: pick a repository, then choose an action (enter = cd)${NC}
   rp cd                 ${GRAY}# Change to selected repository${NC}
   rp dot                ${GRAY}# Fuzzy match "dot" and cd to best match (e.g. dotfiles)${NC}
   rp cd dot             ${GRAY}# Same as above (explicit cd subcommand)${NC}

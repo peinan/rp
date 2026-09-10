@@ -12,10 +12,10 @@ local CYAN=$'\033[0;36m'
 local GRAY=$'\033[38;5;242m'
 local NC=$'\033[0m'
 
-local action="${1:-cd}"
+local action="${1:-hub}"
 local query=""
 case "$action" in
-    list|l|cd|c|path|p|remove|rm|r|get|g|create|new|n|open|o|help|h)
+    hub|list|l|cd|c|path|p|remove|rm|r|get|g|create|new|n|open|o|help|h)
         ;;
     -*)
         action="help"
@@ -214,7 +214,265 @@ _repo_copy_path() {
     return 1
 }
 
+_repo_hub_new_name() {
+    # ^R carries the picker's query out to become a repository name. Validate
+    # it here, before anything touches the disk.
+    local name="${1%/}"
+    if [[ -z "$name" ]]; then
+        print -u2 "rp: repository name is empty"
+        return 1
+    fi
+    if [[ "$name" == /* || "$name" == *//* ]]; then
+        print -u2 "rp: invalid repository name: $name"
+        return 1
+    fi
+    local -a parts=("${(@s:/:)name}")
+    if (( $#parts < 2 )); then
+        print -u2 "rp: repository name must be <user>/<repo>: $name"
+        return 1
+    fi
+    local p
+    for p in "$parts[@]"; do
+        # Rejects spaces and every shell metacharacter. A leading - is safe:
+        # only the absolute path is ever passed as an argument.
+        if [[ ! "$p" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            print -u2 "rp: unsupported character in $name (allowed: letters digits . _ -)"
+            return 1
+        fi
+        if [[ "$p" == "." || "$p" == ".." ]]; then
+            print -u2 "rp: invalid path component in $name"
+            return 1
+        fi
+    done
+    _repo_qualify_host "$name"
+}
+
+_repo_hub_menu() {
+    # Stage 2: the operation x destination product, flattened into one
+    # searchable list. Prints a single action token. $1 is "repo" for an
+    # existing pick, "create" for a name that does not exist yet.
+    # $label_session / $label_window come from the hub branch's scope, the way
+    # _repo_parse_tmux_opt writes $tmux_mode into its caller's.
+    local mode="$1"
+    local rel="$2"
+    local root="$(ghq root)"
+    local -a items=(
+        "here"$'\t'"cd here"
+        "session"$'\t'"new $label_session"
+        "window"$'\t'"new $label_window"
+        "editor"$'\t'"open in editor"
+    )
+    # Copying a path and removing a clone both need one on disk.
+    if [[ "$mode" == "repo" && -e "$root/$rel/.git" ]]; then
+        items+=("path"$'\t'"copy path" "remove"$'\t'"remove")
+    fi
+
+    # The prompt states an implicit clone or create once, so no label has to.
+    local prompt="$rel > "
+    if [[ "$mode" == "create" ]]; then
+        prompt="create $rel > "
+    elif [[ ! -e "$root/$rel/.git" ]]; then
+        prompt="clone $rel > "
+    fi
+
+    # id<TAB>label: --with-nth displays the label, --accept-nth dispatches the
+    # id. The id is invisible and unsearchable, so rewording a label cannot
+    # change behaviour.
+    print -rl -- "$items[@]" |
+        fzf --height=~40% \
+            --delimiter="\t" --with-nth=2 --accept-nth=1 \
+            --prompt="$prompt" \
+            --footer="${GRAY}esc cancel${NC}" --footer-border
+}
+
+_repo_hub_pick() {
+    # Stage 1: pick the repository. Writes hub_query / hub_action / hub_repo
+    # into the caller's scope. Returns 130 when cancelled, 1 on failure.
+    local root="$(ghq root)"
+
+    local -i have_gh=0
+    (( $+commands[gh] )) && have_gh=1
+
+    # Read the list once: "no repositories" is a state worth naming, and it
+    # must not be mistaken for a cancelled picker.
+    local -a repos
+    repos=(${(f)"$(ghq list)"})     # unquoted: empty output must give 0 elements
+
+    local cmd_local='ghq list'
+    # 2>&1 so a failing gh listing shows its own error in the list, where the
+    # user is already looking, instead of silently emptying it.
+    local cmd_remote='gh repo list --limit 100 --json nameWithOwner --jq ".[].nameWithOwner" 2>&1'
+
+    # Re-emitted inside change-footer(...), so these must stay one line and
+    # contain none of  +  )  }
+    local footer_local="enter cd  ^S $label_session  ^T $label_window  ^O actions  ^R new"
+    local footer_remote="enter clone+cd  ^S clone+$label_session  ^T clone+$label_window  ^O actions"
+    if (( have_gh )); then
+        footer_local+="  ^G remote"
+        footer_remote+="  ^G local"
+    fi
+
+    # fzf runs every template with $SHELL -c, so these bodies are POSIX:
+    # `case`, never [[ ]], which breaks under SHELL=/bin/sh.
+    local preview_local='eza "$RP_ROOT"/{} --color=always'
+    (( $+commands[eza] )) || preview_local='ls -la "$RP_ROOT"/{}'
+    local preview="case \"\$FZF_PROMPT\" in remote*) gh repo view {} --json description,url,pushedAt --template '{{.description}}\n{{.url}}\nLast updated: {{.pushedAt}}' ;; *) $preview_local ;; esac"
+
+    # ^G flips the noun source in place. fzf has no variables, so the prompt
+    # carries the state and $FZF_PROMPT reaches the transform's child. Every
+    # dynamic value arrives through the environment, so nothing here needs
+    # shell quoting.
+    local toggle='case "$FZF_PROMPT" in remote*) echo "change-prompt($RP_P_LOCAL)+change-footer($RP_F_LOCAL)+reload:$RP_CMD_LOCAL" ;; *) echo "change-prompt($RP_P_REMOTE)+change-footer($RP_F_REMOTE)+reload:$RP_CMD_REMOTE" ;; esac'
+
+    # One --bind per option: the bodies contain commas, and commas separate
+    # KEY:ACTION pairs. transform{...} rather than transform(...), because the
+    # bind parser counts the delimiter pair and a body containing print(...)
+    # would close it early. Plain accept everywhere, never accept-non-empty:
+    # that would queue a token without exiting and shift the output lines.
+    local -a fzf_args=(
+        --bind 'enter:print(here)+accept'
+        --bind 'ctrl-s:print(session)+accept'
+        --bind 'ctrl-t:print(window)+accept'
+        --bind 'ctrl-o:print(menu)+accept'
+        --bind 'ctrl-r:transform{ [ -n "$FZF_QUERY" ] && echo "print(new)+accept" || echo bell }'
+    )
+    if (( have_gh )); then
+        fzf_args+=(--bind "ctrl-g:transform{$toggle}")
+    else
+        # The guide omits ^G, but the key should say why rather than do nothing.
+        fzf_args+=(--bind "ctrl-g:change-footer:rp: ^G needs gh  $footer_local")
+    fi
+    # A path may hold any character, so it goes in --header, which is never
+    # re-emitted inside an action list.
+    (( $#repos )) || fzf_args+=(--header "rp: no repositories under $root")
+
+    local out
+    out=$( { (( $#repos )) && print -rl -- "$repos[@]" } |
+        RP_ROOT="$root" \
+        RP_P_LOCAL="local> " RP_P_REMOTE="remote> " \
+        RP_F_LOCAL="$footer_local" RP_F_REMOTE="$footer_remote" \
+        RP_CMD_LOCAL="$cmd_local" RP_CMD_REMOTE="$cmd_remote" \
+        fzf --height=~50% \
+            --print-query \
+            --prompt="local> " \
+            --ghost="filter, or type a new name and press ^R" \
+            --footer="$footer_local" \
+            --footer-border \
+            --preview="$preview" \
+            --preview-window=down:5:wrap \
+            "$fzf_args[@]" )
+    local -i rc=$?
+
+    # 0 vs 1 carries no information: ^R on a query that matches nothing exits 1
+    # and is still a legitimate create. 130 is esc. Anything else is fzf itself
+    # failing, e.g. an unknown option on an fzf older than 0.63.
+    if (( rc == 130 )); then
+        return 130
+    elif (( rc != 0 && rc != 1 )); then
+        return 1
+    fi
+
+    #   line 1  query      always, from --print-query
+    #   line 2  token      queued by print(...) on any normal exit
+    #   line 3  selection  only when a match was accepted
+    # The quoted (@f) form is required: the query line is legitimately empty,
+    # and ${(f)"$(...)"} would drop it and shift every field.
+    local -a lines=("${(@f)out}")
+    hub_query="${lines[1]:-}"
+    hub_action="${lines[2]:-}"
+    hub_repo="${lines[3]:-}"
+
+    case "$hub_action" in
+        here|session|window|menu|new)
+            ;;
+        *)
+            print -u2 "rp: unexpected picker output: ${(qq)hub_action}"
+            return 1
+            ;;
+    esac
+}
+
 case "$action" in
+    "hub")
+        # Noun-verb entry point: pick the repository first, then the action on
+        # it. Declared before _repo_hub_pick runs, which writes into this scope.
+        local hub_query="" hub_action="" hub_repo=""
+        local hub_root="$(ghq root)"
+        # -s/-w mean herdr inside herdr and tmux outside, so the guide has to
+        # name whichever one it will actually create.
+        local label_session="session" label_window="window"
+        if [[ -n "$HERDR_ENV" ]]; then
+            label_session="workspace"
+            label_window="tab"
+        fi
+
+        _repo_hub_pick
+        local -i pick_rc=$?
+        (( pick_rc == 130 )) && return 0    # esc: the silent cancel the other pickers do
+        (( pick_rc == 0 )) || return 1
+
+        local hub_rel="" hub_dest="" hub_full=""
+        if [[ "$hub_action" == "new" ]]; then
+            hub_rel=$(_repo_hub_new_name "$hub_query") || return 1
+            # The menu runs before anything is created, so an esc here leaves
+            # nothing behind.
+            hub_dest=$(_repo_hub_menu create "$hub_rel")
+            [[ -n "$hub_dest" ]] || return 0
+            hub_full="$hub_root/$hub_rel"
+            if [[ -e "$hub_full" ]]; then
+                print -u2 "rp: $hub_rel already exists"
+                return 1
+            fi
+            _repo_create "$hub_rel" || return 1
+            _repo_open_dest "$hub_dest" "$hub_full"
+            return
+        fi
+
+        [[ -n "$hub_repo" ]] || return 0
+        # ghq list gives host/user/repo, gh repo list gives user/repo.
+        hub_rel=$(_repo_qualify_host "$hub_repo")
+        if [[ "$hub_action" == "menu" ]]; then
+            hub_dest=$(_repo_hub_menu repo "$hub_rel")
+            [[ -n "$hub_dest" ]] || return 0
+        else
+            hub_dest="$hub_action"
+        fi
+        hub_full="$hub_root/$hub_rel"
+
+        # Clone first if the pick has none yet, which a ^G pick never does.
+        # Test .git rather than the directory: an interrupted clone leaves a
+        # bare directory behind, and .git may be a file in a worktree.
+        case "$hub_dest" in
+            path|remove)
+                ;;
+            *)
+                if [[ ! -e "$hub_full/.git" ]]; then
+                    if [[ ! "$hub_rel" =~ ^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)+$ ]]; then
+                        print -u2 "rp: not a repository: ${(qq)hub_repo}"
+                        print -u2 "rp: if this is a gh error, check: gh auth status"
+                        return 1
+                    fi
+                    ghq get "$hub_rel" || return 1
+                fi
+                ;;
+        esac
+
+        case "$hub_dest" in
+            path)
+                _repo_copy_path "$hub_full"
+                ;;
+            remove)
+                if [[ ! -e "$hub_full/.git" ]]; then
+                    print -u2 "rp: not a clone, refusing to remove: $hub_rel"
+                    return 1
+                fi
+                _repo_remove_confirmed "$hub_rel"
+                ;;
+            *)
+                _repo_open_dest "$hub_dest" "$hub_full"
+                ;;
+        esac
+        ;;
     "list"|"l")
         # List all repositories with fzf selection
         local selected_repo

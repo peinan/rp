@@ -39,6 +39,19 @@ if [[ "$action" != "help" ]]; then
     fi
 fi
 
+_repo_require() {
+    # Same message shape as the startup check above, for commands that only
+    # some subcommands need.
+    local -a lacking=()
+    local c
+    for c in "$@"; do
+        (( $+commands[$c] )) || lacking+=("$c")
+    done
+    (( $#lacking )) || return 0
+    print -u2 "rp: missing required command(s): ${(j:, :)lacking}"
+    return 1
+}
+
 _repo_tmux_open() {
     local mode="$1"
     local target_path="$2"
@@ -105,10 +118,100 @@ _repo_mux_open() {
     local target_path="$2"
     # herdr の中なら herdr、それ以外は tmux（in/out 両対応）
     if [[ -n "$HERDR_ENV" ]]; then
+        # jq は `herdr workspace list` を読む session 側でしか使わない。
+        local -a needed=(herdr)
+        [[ "$mode" == "session" ]] && needed+=(jq)
+        _repo_require "$needed[@]" || return 1
         _repo_herdr_open "$mode" "$target_path"
     else
+        _repo_require tmux || return 1
         _repo_tmux_open "$mode" "$target_path"
     fi
+}
+
+_repo_editor_open() {
+    local target_path="$1"
+    local editor="${2:-code}"
+    if command -v "$editor" > /dev/null; then
+        "$editor" "$target_path"
+    else
+        echo "Editor '$editor' not found. Trying fallback editors..."
+        if command -v code > /dev/null; then
+            code "$target_path"
+        elif command -v vim > /dev/null; then
+            vim "$target_path"
+        else
+            echo "No suitable editor found (code, vim)"
+        fi
+    fi
+}
+
+_repo_open_dest() {
+    # Destination axis: where a repository gets opened, independent of the
+    # operation that produced it. Shared by the -s/-w branches and the hub.
+    # Never call this from $(...) or a subshell: the `here` cd would be lost.
+    local dest="$1"
+    local target_path="$2"
+    case "$dest" in
+        here)
+            cd "$target_path" || return 1
+            ;;
+        session|window)
+            _repo_mux_open "$dest" "$target_path"
+            ;;
+        editor)
+            _repo_editor_open "$target_path" "$3"
+            ;;
+    esac
+}
+
+_repo_qualify_host() {
+    # Add github.com prefix for short form (user/repo)
+    local repo_path="$1"
+    local first_segment="${repo_path%%/*}"
+    if [[ "$first_segment" != *.* ]]; then
+        repo_path="github.com/$repo_path"
+    fi
+    print -r -- "$repo_path"
+}
+
+_repo_create() {
+    local repo_path="$1"
+    local full_path="$(ghq root)/$repo_path"
+    mkdir -p "$full_path" || return 1
+    git -C "$full_path" init || return 1
+    echo "Created and initialized: $repo_path"
+}
+
+_repo_remove_confirmed() {
+    local selected_repo="$1"
+    printf "Are you sure you want to remove %s? (y/n [y]) " "$selected_repo"
+    local confirm
+    read -r confirm
+    if [[ -z "$confirm" || "$confirm" =~ ^[Yy](es)?$ ]]; then
+        rm -rf "$(ghq root)/$selected_repo"
+        echo "Removed: $selected_repo"
+    else
+        echo "Cancelled"
+    fi
+}
+
+_repo_copy_path() {
+    # Print the path either way, so the value survives a missing clipboard tool.
+    local target_path="$1"
+    local cmd
+    for cmd in pbcopy wl-copy xclip; do
+        (( $+commands[$cmd] )) || continue
+        case "$cmd" in
+            xclip) printf %s "$target_path" | xclip -selection clipboard ;;
+            *)     printf %s "$target_path" | $cmd ;;
+        esac
+        print -r -- "$target_path"
+        return 0
+    done
+    print -u2 "rp: no clipboard command found (tried pbcopy, wl-copy, xclip)"
+    print -r -- "$target_path"
+    return 1
 }
 
 case "$action" in
@@ -135,12 +238,7 @@ case "$action" in
             selected_repo=$(ghq list | fzf --height=~20% --preview="eza $(ghq root)/{} --color=always" --preview-window=down:3:wrap)
         fi
         if [[ -n "$selected_repo" ]]; then
-            local full_path="$(ghq root)/$selected_repo"
-            if [[ -n "$tmux_mode" ]]; then
-                _repo_mux_open "$tmux_mode" "$full_path"
-            else
-                cd "$full_path" || return 1
-            fi
+            _repo_open_dest "${tmux_mode:-here}" "$(ghq root)/$selected_repo"
         fi
         ;;
     "path"|"p")
@@ -163,16 +261,7 @@ case "$action" in
         local selected_repo
         selected_repo=$(ghq list | fzf --height=50% --preview="eza $(ghq root)/{} --color=always" --preview-window=down:3:wrap --prompt="Select repository to remove: ")
         if [[ -n "$selected_repo" ]]; then
-            printf "Are you sure you want to remove %s? (y/n [y]) " "$selected_repo"
-            read -r confirm
-            if [[ -z "$confirm" || "$confirm" =~ ^[Yy](es)?$ ]]; then
-                echo "yes"
-                rm -rf "$(ghq root)/$selected_repo"
-                echo "Removed: $selected_repo"
-            else
-                echo "no"
-                echo "Cancelled"
-            fi
+            _repo_remove_confirmed "$selected_repo"
         fi
         ;;
     "get"|"g")
@@ -186,10 +275,7 @@ case "$action" in
             selected_repo=$(gh repo list --limit 100 --json nameWithOwner --jq '.[].nameWithOwner' | fzf --height=50% --preview="gh repo view {} --json description,url,pushedAt --template '{{.description}}\n{{.url}}\nLast updated: {{.pushedAt}}'" --preview-window=down:5:wrap --prompt="Select repository to clone: ")
             if [[ -n "$selected_repo" ]]; then
                 full_path="$(ghq root)/github.com/$selected_repo"
-                ghq get "github.com/$selected_repo"
-                if [[ -z "$tmux_mode" ]]; then
-                    cd "$full_path"
-                fi
+                ghq get "github.com/$selected_repo" || return 1
             fi
         else
             # Normalize URL to path format for ghq
@@ -202,21 +288,14 @@ case "$action" in
             # Remove GitHub-specific paths (/tree/branch, /blob/branch, etc.)
             repo_path="${repo_path%%/tree/*}"
             repo_path="${repo_path%%/blob/*}"
-            # Add github.com prefix for short form (user/repo)
-            local first_segment="${repo_path%%/*}"
-            if [[ "$first_segment" != *.* ]]; then
-                repo_path="github.com/$repo_path"
-            fi
+            repo_path=$(_repo_qualify_host "$repo_path")
 
             full_path="$(ghq root)/$repo_path"
-            ghq get "$2"
-            if [[ -z "$tmux_mode" ]]; then
-                cd "$full_path"
-            fi
+            ghq get "$2" || return 1
         fi
 
-        if [[ -n "$tmux_mode" && -n "$full_path" ]]; then
-            _repo_mux_open "$tmux_mode" "$full_path"
+        if [[ -n "$full_path" ]]; then
+            _repo_open_dest "${tmux_mode:-here}" "$full_path"
         fi
         ;;
     "create"|"new"|"n")
@@ -230,23 +309,9 @@ case "$action" in
             echo "Example: rp create user/new-repo"
             return 1
         fi
-        local repo_path="$2"
-        # Add github.com prefix for short form (user/repo)
-        local first_segment="${repo_path%%/*}"
-        if [[ "$first_segment" != *.* ]]; then
-            repo_path="github.com/$repo_path"
-        fi
-        local full_path="$(ghq root)/$repo_path"
-        mkdir -p "$full_path"
-        git -C "$full_path" init
-        if [[ -z "$tmux_mode" ]]; then
-            cd "$full_path" || return 1
-        fi
-        echo "Created and initialized: $repo_path"
-
-        if [[ -n "$tmux_mode" ]]; then
-            _repo_mux_open "$tmux_mode" "$full_path"
-        fi
+        local repo_path="$(_repo_qualify_host "$2")"
+        _repo_create "$repo_path" || return 1
+        _repo_open_dest "${tmux_mode:-here}" "$(ghq root)/$repo_path"
         ;;
     "open"|"o")
         # Open repository in editor (default: code)
@@ -254,19 +319,7 @@ case "$action" in
         local selected_repo
         selected_repo=$(ghq list | fzf --height=50% --preview="eza $(ghq root)/{} --color=always" --preview-window=down:3:wrap)
         if [[ -n "$selected_repo" ]]; then
-            local repo_path="$(ghq root)/$selected_repo"
-            if command -v "$editor" > /dev/null; then
-                "$editor" "$repo_path"
-            else
-                echo "Editor '$editor' not found. Trying fallback editors..."
-                if command -v code > /dev/null; then
-                    code "$repo_path"
-                elif command -v vim > /dev/null; then
-                    vim "$repo_path"
-                else
-                    echo "No suitable editor found (code, vim)"
-                fi
-            fi
+            _repo_open_dest editor "$(ghq root)/$selected_repo" "$editor"
         fi
         ;;
     "help"|"h"|*)

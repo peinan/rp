@@ -111,6 +111,24 @@ git clone https://github.com/peinan/rp ~/.local/share/rp
 source ~/.local/share/rp/rp.plugin.zsh
 ```
 
+## Upgrading
+
+Whatever your installer calls "update":
+
+| Installed with | Upgrade |
+| --- | --- |
+| Homebrew | `brew update && brew upgrade peinan/tap/rp` |
+| sheldon | `sheldon lock --update` |
+| zinit | `zinit update peinan/rp` |
+| znap | `znap pull` |
+| zplug | `zplug update` |
+| antidote | `antidote update` |
+| Oh My Zsh | `git -C "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/plugins/rp" pull` |
+| Manual | `git -C ~/.local/share/rp pull` |
+
+Then start a new shell, or `exec zsh`. `rp` is autoloaded, so a shell that has
+already run it holds the old function body in memory and keeps using it.
+
 ## Usage
 
 ```text

@@ -135,7 +135,7 @@ already run it holds the old function body in memory and keeps using it.
 Usage: rp <command> [args]
 
 Commands:
-  (no command)            Hub mode: pick a repository first, then choose an action
+  (no command), hub       Hub mode: pick a repository first, then choose an action
   list, ls                List repositories with fzf selection
   cd, c [-s|-w] [query]   Change directory to selected repository
                           If query is given, fuzzy match and cd to best match

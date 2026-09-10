@@ -620,7 +620,7 @@ ${BOLD}Repository management with ghq and fzf${NC}
 ${CYAN}Usage:${NC} rp <command> [args]
 
 ${CYAN}Commands:${NC}
-  ${GRAY}(no command)${NC}            Hub mode: pick a repository first, then choose an action
+  ${GRAY}(no command),${NC} ${GREEN}hub${NC}       Hub mode: pick a repository first, then choose an action
   ${GREEN}list, ls${NC}                List repositories with fzf selection
   ${GREEN}cd, c${NC} ${YELLOW}[-s|-w] [query]${NC}   Change directory to selected repository
                           If ${YELLOW}query${NC} is given, fuzzy match and cd to best match

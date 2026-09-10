@@ -211,40 +211,43 @@ rp remove                       # pick a repository and delete it (asks first)
 
 ## Herdr plugin
 
-Inside [herdr](https://herdr.dev) the same flows are one keypress away from any
-pane: a popup runs the fzf picker and opens the chosen repository as a new
-workspace or tab. The plugin ships in this repository (`herdr-plugin.toml`) and
-needs herdr 0.9.0 or newer.
+Inside [herdr](https://herdr.dev) every repository is one keypress away from any
+pane: a popup runs hub mode and opens what you pick as a workspace or a tab. The
+plugin ships in this repository (`herdr-plugin.toml`) and needs herdr 0.9.0 or
+newer.
 
 ```bash
 herdr plugin install peinan/rp
 ```
 
-herdr plugins cannot ship key bindings, so bind an action in
+herdr plugins cannot ship key bindings, so bind the action in
 `~/.config/herdr/config.toml` and reload the config:
 
 ```toml
 [[keys.command]]
 key = "prefix+ctrl+r"
 type = "plugin_action"
-command = "rp.cd-workspace"
+command = "rp.hub"
 description = "jump to a ghq repository"
 ```
 
-| Action | Equivalent | What it does |
-| --- | --- | --- |
-| `rp.cd-workspace` | `rp cd -s` | Pick a repository and open it as a workspace (reuses one with the same label) |
-| `rp.cd-tab` | `rp cd -w` | Pick a repository and open it in a new tab |
-| `rp.get-workspace` | `rp get -s` | Pick one of your GitHub repositories, clone it, open it as a workspace |
-| `rp.get-tab` | `rp get -w` | Same, in a new tab |
-| `rp.create-workspace` | `rp create -s` | Ask for `user/repo`, `git init` it under `ghq root`, open it as a workspace |
-| `rp.create-tab` | `rp create -w` | Same, in a new tab |
+| Action | What it does |
+| --- | --- |
+| `rp.hub` | Opens hub mode in a popup: pick a repository, then choose what to do with it |
+
+One binding reaches everything, because the keys live inside the picker rather
+than in the manifest — `enter` opens a workspace, `^T` a tab, `^O` the full
+action list, `^R` creates, `^X` deletes, `^G` switches to your GitHub
+repositories. See [Hub mode](#hub-mode). Adding an operation to `rp` costs no
+new action, pane, or key binding.
+
+The one difference from a prompt: a popup does not outlive the picker, so there
+is nothing to `cd`. `cd here` is left out and `enter` opens a workspace instead.
 
 The plugin runs its own copy of `functions/rp` from the herdr-managed checkout, so
 it does not need the zsh plugin to be installed. `rp cd` and `rp path` stay
 zsh-only: a plugin process cannot change your shell's directory. `ghq`, `fzf`,
-`git` and `jq` must be on the `PATH` herdr was started with, plus `gh` for the
-`get` actions.
+`git` and `jq` must be on the `PATH` herdr was started with, plus `gh` for `^G`.
 
 To hack on it, link a checkout instead of installing: `herdr plugin link /path/to/rp`.
 

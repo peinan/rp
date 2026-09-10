@@ -418,6 +418,14 @@ case "$action" in
             # The menu runs before anything is created, so an esc here leaves
             # nothing behind.
             hub_dest=$(_repo_hub_menu create "$hub_rel")
+            # 1/130 mean nothing was chosen. Anything else is the menu itself
+            # failing, which must not be mistaken for a cancel — same split
+            # _repo_hub_pick makes.
+            case $? in
+                0) ;;
+                1|130) return 0 ;;
+                *) return 1 ;;
+            esac
             [[ -n "$hub_dest" ]] || return 0
             hub_full="$hub_root/$hub_rel"
             if [[ -e "$hub_full" ]]; then
@@ -434,6 +442,11 @@ case "$action" in
         hub_rel=$(_repo_qualify_host "$hub_repo")
         if [[ "$hub_action" == "menu" ]]; then
             hub_dest=$(_repo_hub_menu repo "$hub_rel")
+            case $? in
+                0) ;;
+                1|130) return 0 ;;
+                *) return 1 ;;
+            esac
             [[ -n "$hub_dest" ]] || return 0
         else
             hub_dest="$hub_action"

@@ -6,107 +6,42 @@
 
 id = "rp"
 name = "rp"
-version = "0.2.0"
+version = "0.3.0"
 # Verified against 0.9.0: popup panes with width/height and `herdr plugin pane open`.
 min_herdr_version = "0.9.0"
 description = "Jump between ghq-managed repositories with fzf"
 # functions/rp is zsh, which the Windows beta does not have.
 platforms = ["linux", "macos"]
 
-# Actions are what keybindings can invoke. They run without a TTY, so each one only
-# asks herdr to open the pane of the same name (herdr/action.zsh). Bind one with:
+# One action, because hub mode reaches every operation from inside the picker:
+# enter opens a workspace, ^T a tab, ^O the full action list, ^R creates, ^X
+# deletes, ^G switches to your GitHub repositories. Adding an operation to rp no
+# longer costs an action here, a pane, or a key binding. Bind it with:
 #
 #   [[keys.command]]
 #   key = "prefix+ctrl+r"
 #   type = "plugin_action"
-#   command = "rp.cd-workspace"
+#   command = "rp.hub"
+#
+# Actions run without a TTY, so this one only asks herdr to open the pane of the
+# same name (herdr/action.zsh).
 
 [[actions]]
-id = "cd-workspace"
-title = "rp: jump to repository (workspace)"
+id = "hub"
+title = "rp: repositories"
 contexts = ["global", "workspace"]
-command = ["zsh", "herdr/action.zsh", "cd-workspace"]
+command = ["zsh", "herdr/action.zsh", "hub"]
 
-[[actions]]
-id = "cd-tab"
-title = "rp: jump to repository (tab)"
-contexts = ["global", "workspace"]
-command = ["zsh", "herdr/action.zsh", "cd-tab"]
-
-[[actions]]
-id = "get-workspace"
-title = "rp: clone repository (workspace)"
-contexts = ["global", "workspace"]
-command = ["zsh", "herdr/action.zsh", "get-workspace"]
-
-[[actions]]
-id = "get-tab"
-title = "rp: clone repository (tab)"
-contexts = ["global", "workspace"]
-command = ["zsh", "herdr/action.zsh", "get-tab"]
-
-[[actions]]
-id = "create-workspace"
-title = "rp: create repository (workspace)"
-contexts = ["global", "workspace"]
-command = ["zsh", "herdr/action.zsh", "create-workspace"]
-
-[[actions]]
-id = "create-tab"
-title = "rp: create repository (tab)"
-contexts = ["global", "workspace"]
-command = ["zsh", "herdr/action.zsh", "create-tab"]
-
-# Panes are real terminals. Each entrypoint runs one fixed rp invocation through
-# herdr/pane.zsh, which autoloads functions/rp from this checkout, and the popup
-# closes when rp exits. `command` is argv (no shell), hence the explicit `zsh -c`;
-# the script is addressed through $HERDR_PLUGIN_ROOT so a --cwd override on
+# Panes are real terminals. This one runs hub mode through herdr/pane.zsh, which
+# autoloads functions/rp from this checkout, and the popup closes when rp exits.
+# `command` is argv (no shell), hence the explicit `zsh -c`; the script is
+# addressed through $HERDR_PLUGIN_ROOT so a --cwd override on
 # `herdr plugin pane open` cannot break it.
 
 [[panes]]
-id = "cd-workspace"
+id = "hub"
 title = "rp"
 placement = "popup"
 width = "80%"
 height = "60%"
-command = ["zsh", "-c", 'exec "$HERDR_PLUGIN_ROOT/herdr/pane.zsh" cd -s']
-
-[[panes]]
-id = "cd-tab"
-title = "rp"
-placement = "popup"
-width = "80%"
-height = "60%"
-command = ["zsh", "-c", 'exec "$HERDR_PLUGIN_ROOT/herdr/pane.zsh" cd -w']
-
-[[panes]]
-id = "get-workspace"
-title = "rp"
-placement = "popup"
-width = "80%"
-height = "60%"
-command = ["zsh", "-c", 'exec "$HERDR_PLUGIN_ROOT/herdr/pane.zsh" get -s']
-
-[[panes]]
-id = "get-tab"
-title = "rp"
-placement = "popup"
-width = "80%"
-height = "60%"
-command = ["zsh", "-c", 'exec "$HERDR_PLUGIN_ROOT/herdr/pane.zsh" get -w']
-
-[[panes]]
-id = "create-workspace"
-title = "rp"
-placement = "popup"
-width = "60%"
-height = 6
-command = ["zsh", "-c", 'exec "$HERDR_PLUGIN_ROOT/herdr/pane.zsh" create -s']
-
-[[panes]]
-id = "create-tab"
-title = "rp"
-placement = "popup"
-width = "60%"
-height = 6
-command = ["zsh", "-c", 'exec "$HERDR_PLUGIN_ROOT/herdr/pane.zsh" create -w']
+command = ["zsh", "-c", 'exec "$HERDR_PLUGIN_ROOT/herdr/pane.zsh"']

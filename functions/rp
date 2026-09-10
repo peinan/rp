@@ -588,6 +588,7 @@ ${BOLD}Repository management with ghq and fzf${NC}
 ${CYAN}Usage:${NC} rp <command> [args]
 
 ${CYAN}Commands:${NC}
+  ${GREEN}hub${NC}                     Pick a repository first, then choose an action (default)
   ${GREEN}list, l${NC}                 List repositories with fzf selection
   ${GREEN}cd, c${NC} ${YELLOW}[-s|-w] [query]${NC}   Change directory to selected repository
                           If ${YELLOW}query${NC} is given, fuzzy match and cd to best match
@@ -605,10 +606,19 @@ ${CYAN}Commands:${NC}
   ${GREEN}open, o${NC} ${YELLOW}[editor]${NC}        Open repository in editor (default: code)
   ${GREEN}help, h${NC}                 Show this help message
 
+${CYAN}Hub keys${NC} ${GRAY}(bare ${NC}rp${GRAY}, or ${NC}rp hub${GRAY}):${NC}
+  ${GREEN}enter${NC}                   cd to the selected repository
+  ${GREEN}^S${NC}                      Open it as a session (tmux session / herdr workspace)
+  ${GREEN}^T${NC}                      Open it in a new window (tmux window / herdr tab)
+  ${GREEN}^O${NC}                      Choose from every action, including copy path and remove
+  ${GREEN}^R${NC}                      Create the repository named by what you typed
+  ${GREEN}^G${NC}                      Switch between local repositories and your GitHub ones
+  ${GRAY}A pick that is not cloned yet is cloned first, whichever action you choose.${NC}
+
 ${CYAN}Examples:${NC}
   ${GRAY}# -s/-w auto-select the multiplexer (herdr inside herdr, otherwise tmux):${NC}
   ${GRAY}#   -s = tmux session / herdr workspace,  -w = tmux window / herdr tab${NC}
-  rp                    ${GRAY}# List repositories and change to the selected repository${NC}
+  rp                    ${GRAY}# Pick a repository, then choose an action (enter = cd)${NC}
   rp cd                 ${GRAY}# Change to selected repository${NC}
   rp dot                ${GRAY}# Fuzzy match "dot" and cd to best match (e.g. dotfiles)${NC}
   rp cd dot             ${GRAY}# Same as above (explicit cd subcommand)${NC}
@@ -632,7 +642,7 @@ ${CYAN}Examples:${NC}
   rp open vim           ${GRAY}# Open repository in vim${NC}
   rp open nvim          ${GRAY}# Open repository in neovim${NC}
 
-${CYAN}Requirements:${NC} ghq, fzf, git, gh (interactive get), jq + herdr (for -s/-w inside herdr)
+${CYAN}Requirements:${NC} ghq, fzf (0.63.0+), git, gh (get and ^G), jq + herdr (for -s/-w inside herdr)
 EOF
             ;;
 esac

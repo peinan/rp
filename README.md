@@ -117,7 +117,7 @@ Usage: rp <command> [args]
 
 Commands:
   hub                     Pick a repository first, then choose an action (default)
-  list, l                 List repositories with fzf selection
+  list, ls                List repositories with fzf selection
   cd, c [-s|-w] [query]   Change directory to selected repository
                           If query is given, fuzzy match and cd to best match
                           Use -s, --tmux-session to open a session (tmux session / herdr workspace)

@@ -15,7 +15,7 @@ local NC=$'\033[0m'
 local action="${1:-hub}"
 local query=""
 case "$action" in
-    hub|list|l|cd|c|path|p|remove|rm|r|get|g|create|new|n|open|o|help|h)
+    hub|list|ls|cd|c|path|p|remove|rm|r|get|g|create|new|n|open|o|help|h)
         ;;
     -*)
         action="help"
@@ -487,7 +487,7 @@ case "$action" in
                 ;;
         esac
         ;;
-    "list"|"l")
+    "list"|"ls")
         # List all repositories with fzf selection
         local selected_repo
         selected_repo=$(ghq list | fzf --height=~20% --preview="eza $(ghq root)/{} --color=always" --preview-window=down:3:wrap)
@@ -603,7 +603,7 @@ ${CYAN}Usage:${NC} rp <command> [args]
 
 ${CYAN}Commands:${NC}
   ${GREEN}hub${NC}                     Pick a repository first, then choose an action (default)
-  ${GREEN}list, l${NC}                 List repositories with fzf selection
+  ${GREEN}list, ls${NC}                List repositories with fzf selection
   ${GREEN}cd, c${NC} ${YELLOW}[-s|-w] [query]${NC}   Change directory to selected repository
                           If ${YELLOW}query${NC} is given, fuzzy match and cd to best match
                           Use ${YELLOW}-s${NC}, ${YELLOW}--tmux-session${NC} to open a session (tmux session / herdr workspace)

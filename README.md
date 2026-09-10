@@ -15,10 +15,11 @@ shell function rather than an executable on `PATH` — a subprocess cannot `cd`
 its parent.
 
 It works in both directions. Name the action first and then pick the repository,
-or run bare `rp` to pick the repository first and then choose what to do with it.
+or run bare `rp` — hub mode — to pick the repository first and then choose what
+to do with it.
 
 ```console
-$ rp                # pick a repository, then choose an action
+$ rp                # hub mode: pick a repository, then choose an action
 $ rp dot            # fuzzy match and cd to the best match
 $ rp path dot       # print the path instead of cd-ing
 $ rp get -w x/y     # clone and open in a new window
@@ -41,7 +42,7 @@ through a subcommand.
 
 | Command | Needed for | Without it |
 | --- | --- | --- |
-| [`gh`](https://cli.github.com/) | `rp get` with no argument, and `^G` in the hub (pick from your remote repos) | Pass a URL to `rp get` explicitly; `^G` is left out of the hub |
+| [`gh`](https://cli.github.com/) | `rp get` with no argument, and `^G` in hub mode (pick from your remote repos) | Pass a URL to `rp get` explicitly; `^G` is left out of hub mode |
 | [`eza`](https://github.com/eza-community/eza) | Directory preview inside fzf | Falls back to `ls -la` |
 | [`tmux`](https://github.com/tmux/tmux) | `-s` / `-w` outside herdr | Omit `-s` / `-w` |
 | [`herdr`](https://herdr.dev) + [`jq`](https://jqlang.github.io/jq/) | `-s` / `-w` inside herdr | Omit `-s` / `-w` |
@@ -116,7 +117,7 @@ source ~/.local/share/rp/rp.plugin.zsh
 Usage: rp <command> [args]
 
 Commands:
-  hub                     Pick a repository first, then choose an action (default)
+  (no command)            Hub mode: pick a repository first, then choose an action
   list, ls                List repositories with fzf selection
   cd, c [-s|-w] [query]   Change directory to selected repository
                           If query is given, fuzzy match and cd to best match
@@ -134,11 +135,12 @@ Commands:
 A bare word that is not a subcommand is treated as a fuzzy query, so `rp dot`
 means `rp cd dot`.
 
-### The hub
+### Hub mode
 
-Running `rp` with no arguments lists your repositories and then asks what to do
-with the one you pick. `enter` does what bare `rp` has always done, so the common
-path is unchanged; the other keys reach the rest without needing a subcommand.
+Running `rp` with no arguments puts you in hub mode: it lists your repositories
+and then asks what to do with the one you pick. `enter` does what bare `rp` has
+always done, so the common path is unchanged; the other keys reach the rest
+without needing a subcommand. `rp hub` is the same thing, spelled out.
 
 | Key | Action |
 | --- | --- |
@@ -178,7 +180,7 @@ and `^Q` remain).
 ### Examples
 
 ```bash
-rp                              # pick a repository, then choose an action
+rp                              # hub mode: pick a repository, then choose an action
 rp dot                          # fuzzy match "dot" and cd to the best match
 rp cd -s dot                    # same, but in a new session / workspace
 cd "$(rp path dot)"             # use the path in command substitution

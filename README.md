@@ -147,6 +147,7 @@ path is unchanged; the other keys reach the rest without needing a subcommand.
 | `^T` | Open it in a new window (tmux window / herdr tab) |
 | `^O` | Choose from every action, including `copy path` and `remove` |
 | `^R` | Create the repository named by what you typed |
+| `^X` | Delete it (asks first, and refuses anything not cloned) |
 | `^G` | Switch between your local repositories and your GitHub ones |
 
 Picking something that is not cloned yet — anything from `^G`, in practice —

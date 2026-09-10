@@ -305,7 +305,7 @@ _repo_hub_pick() {
 
     # Re-emitted inside change-footer(...), so these must stay one line and
     # contain none of  +  )  }
-    local footer_local="enter cd  ^S $label_session  ^T $label_window  ^O actions  ^R new"
+    local footer_local="enter cd  ^S $label_session  ^T $label_window  ^O actions  ^R new  ^X del"
     local footer_remote="enter clone+cd  ^S clone+$label_session  ^T clone+$label_window  ^O actions"
     if (( have_gh )); then
         footer_local+="  ^G remote"
@@ -334,6 +334,7 @@ _repo_hub_pick() {
         --bind 'ctrl-s:print(session)+accept'
         --bind 'ctrl-t:print(window)+accept'
         --bind 'ctrl-o:print(menu)+accept'
+        --bind 'ctrl-x:print(remove)+accept'
         --bind 'ctrl-r:transform{ [ -n "$FZF_QUERY" ] && echo "print(new)+accept" || echo bell }'
     )
     if (( have_gh )); then
@@ -383,7 +384,7 @@ _repo_hub_pick() {
     hub_repo="${lines[3]:-}"
 
     case "$hub_action" in
-        here|session|window|menu|new)
+        here|session|window|menu|new|remove)
             ;;
         *)
             print -u2 "rp: unexpected picker output: ${(qq)hub_action}"
@@ -612,6 +613,7 @@ ${CYAN}Hub keys${NC} ${GRAY}(bare ${NC}rp${GRAY}, or ${NC}rp hub${GRAY}):${NC}
   ${GREEN}^T${NC}                      Open it in a new window (tmux window / herdr tab)
   ${GREEN}^O${NC}                      Choose from every action, including copy path and remove
   ${GREEN}^R${NC}                      Create the repository named by what you typed
+  ${GREEN}^X${NC}                      Delete it (asks first; refuses anything not cloned)
   ${GREEN}^G${NC}                      Switch between local repositories and your GitHub ones
   ${GRAY}A pick that is not cloned yet is cloned first, whichever action you choose.${NC}
 

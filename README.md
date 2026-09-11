@@ -12,30 +12,6 @@ A zsh function over [ghq](https://github.com/x-motemen/ghq) and
 [fzf](https://github.com/junegunn/fzf). Pick a repository, then say what to do
 with it — or name the action first. Either order, one picker.
 
-```console
-$ rp                # pick a repository, then choose an action
-$ rp dot            # fuzzy match "dot" and cd there
-$ rp get -w x/y     # clone it and open a new window
-$ rp path dot       # print the path instead
-```
-
-## Why rp?
-
-- **It is not only `cd`.** Clone, create, open in an editor, copy the path,
-  remove — and send the result to a tmux session or window, or a herdr
-  workspace or tab, instead of only the current shell.
-- **ghq-native.** `ghq list` is the source of truth, so what you can reach is
-  exactly what you have cloned: no frecency database to warm up, nothing to
-  import, and a fresh machine works the moment `ghq get` has run once.
-- **Both orderings.** `rp cd -s foo` when you know what you want; bare `rp`
-  when you would rather pick first and decide after.
-
-zoxide answers *where have I been*; `rp` answers *what have I cloned*. Using
-both is reasonable. A `ghq list | fzf` function covers the `cd` case and covers
-it well — but the moment you want "clone this one and open it in a new
-workspace" you are writing the operation × destination matrix yourself. That
-matrix is what `rp` is.
-
 ## Requirements
 
 [`ghq`](https://github.com/x-motemen/ghq),
@@ -342,24 +318,156 @@ To hack on it, link a checkout instead of installing:
 
 ## FAQ
 
-**Why is `rp` a shell function rather than a binary on `PATH`?**
-Because `rp cd` has to change the directory of your *current* shell, and a
-subprocess cannot `cd` its parent.
+<details>
+<summary><b>How is this different from zoxide, or from <code>ghq list | fzf</code>?</b></summary>
 
-**zsh only? What about bash and fish?**
+`ghq` already knows where every repository on your disk is. `rp` is the front
+end for acting on that list, and there are three differences worth the name:
+
+- **ghq-native.** `ghq list` is the source of truth, so what you can reach is
+  exactly what you have cloned: no frecency database to warm up, nothing to
+  import, and a fresh machine works the moment `ghq get` has run once. zoxide
+  answers *where have I been*; `rp` answers *what have I cloned*. Those are
+  different questions, and using both is reasonable.
+- **It is not only `cd`.** Clone, create, open in an editor, copy the path,
+  remove — and send the result to a tmux session or window, or a herdr
+  workspace or tab, instead of only the current shell.
+- **Both orderings.** `rp cd -s foo` when you know what you want; bare `rp`
+  when you would rather pick first and decide after.
+
+A `ghq list | fzf` shell function covers the `cd` case and covers it well,
+which is why most people already have one. The moment you want "clone this one
+and open it in a new workspace", you are writing the operation × destination
+matrix yourself. That matrix is what `rp` is.
+
+</details>
+
+<details>
+<summary><b>What is the difference between <code>rp</code> and <code>rp hub</code>?</b></summary>
+
+Nothing. `rp hub` is bare `rp` spelled out — hub mode is the default entry
+point, not a command you have to type.
+
+</details>
+
+<details>
+<summary><b>What do <code>-s</code> and <code>-w</code> actually do?</b></summary>
+
+They name a destination, not an operation, so they mean the same thing on `cd`,
+`get` and `create`: `-s` opens a session, `-w` opens a window. Which
+multiplexer that is gets decided for you — [herdr](https://herdr.dev) when
+`$HERDR_ENV` is set, otherwise tmux — and `-s` reuses an existing session or
+workspace of the same name instead of piling up duplicates. See
+[Multiplexer integration](#multiplexer-integration).
+
+</details>
+
+<details>
+<summary><b>What happens if I pick a repository I have not cloned?</b></summary>
+
+It is cloned first, and then whichever action you chose runs against it. In
+practice this comes up with `^G`, which switches the hub list from your local
+repositories to your GitHub ones.
+
+</details>
+
+<details>
+<summary><b>Which editor does <code>rp open</code> use?</b></summary>
+
+The first one it finds along `rp open <editor>` → `$RP_EDITOR` → `$VISUAL` →
+`$EDITOR` → `code` → `vim` → `nvim`. A value may carry arguments
+(`RP_EDITOR="code -n"`) and may be an absolute path, and one that no longer
+exists does not dead-end the chain — `rp` moves on to the next candidate. See
+[Configuration](#configuration).
+
+</details>
+
+<details>
+<summary><b>Can I change the hub mode keys?</b></summary>
+
+Every key but `enter`, through `RP_KEY_*`, using fzf's key names. They are
+validated when hub mode starts and `rp` names the variable at fault, so a typo
+cannot reach fzf. There is no way to unbind a key — move it out of reach
+instead, which is what `RP_KEY_REMOVE=f12` is for. See
+[Configuration](#configuration).
+
+</details>
+
+<details>
+<summary><b>Can I use it in a script?</b></summary>
+
+`rp path` prints the path instead of `cd`-ing, so `cd "$(rp path dot)"` works,
+and with a query it resolves without opening a picker at all. `rp path` and
+`rp cd` do not read `RP_KEY_*`, so a bad key binding cannot break them.
+
+</details>
+
+<details>
+<summary><b>Does it work inside herdr?</b></summary>
+
+Yes. `-s` / `-w` resolve to herdr automatically whenever `$HERDR_ENV` is set,
+whether or not you install anything extra. On top of that `rp` ships as a herdr
+plugin, so one key binding opens hub mode in a popup and reaches every
+operation from there — see [Herdr plugin](#herdr-plugin).
+
+</details>
+
+<details>
+<summary><b>Why is <code>rp</code> a shell function rather than a binary on <code>PATH</code>?</b></summary>
+
+Because `rp cd` has to change the directory of your *current* shell, and a
+subprocess cannot `cd` its parent. It is also why an upgrade does not reach a
+shell that has already run `rp` — see below.
+
+</details>
+
+<details>
+<summary><b>zsh only? What about bash and fish?</b></summary>
+
 Deliberate, and the `cd` constraint above is not the reason — it applies to
 bash and fish equally, and both can define a function. The reason is that
 `functions/rp` is a zsh autoload function throughout: zsh parameter expansion
 (`${(@f)…}`, `${(qq)…}`, `$+commands[…]`), `local -a` / `local -i`, and helpers
 that write into their caller's scope through dynamic scoping. A port is a
-rewrite of that plumbing, not a compatibility shim, and fish is further still.
+rewrite of that plumbing, not a compatibility shim, and fish is further still —
+a different function and quoting model entirely.
+
 If it happens it will be a shell-agnostic core that prints a decision, leaving
-each shell a thin `cd`-only wrapper —
+each shell a thin `cd`-only wrapper. Hub mode already has that shape
+internally, since its first stage prints a token and the caller acts on it.
 [#10](https://github.com/peinan/rp/issues/10) is where that is discussed.
 
-**I upgraded and nothing changed.**
-`rp` is autoloaded, so a shell that has already run it keeps the old function
+</details>
+
+<details>
+<summary><b>Bare <code>rp</code> does nothing, or prints <code>unknown option: --footer</code></b></summary>
+
+Your `fzf` is older than 0.63.0. Hub mode uses `--footer`, and fzf treats an
+unknown option as a hard error rather than ignoring it, so it fails on every
+invocation. Current versions of `rp` say so in as many words instead. Only hub
+mode is gated: the verb-noun subcommands pass nothing that new and stay usable
+on a much older fzf.
+
+</details>
+
+<details>
+<summary><b>I upgraded and nothing changed</b></summary>
+
+`rp` is autoloaded, so a shell that has already run it holds the old function
 body in memory. Start a new shell, or `exec zsh`.
+
+</details>
+
+<details>
+<summary><b>The preview pane is empty, or shows an error</b></summary>
+
+Without [`eza`](https://github.com/eza-community/eza) the preview falls back to
+`ls -la`. If you have set `RP_PREVIEW_CMD`, note that fzf runs the template
+with `$SHELL -c`, that `{}` is the selected `host/user/repo` and `$RP_ROOT` is
+`$(ghq root)` and needs quoting, and that a `;;` in the template closes hub
+mode's `case` early. See [Configuration](#configuration).
+
+</details>
 
 ## License
 

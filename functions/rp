@@ -130,20 +130,39 @@ _repo_mux_open() {
 }
 
 _repo_editor_open() {
+    # One ordered chain, first command on PATH wins:
+    #   rp open <editor>  ->  $RP_EDITOR  ->  $VISUAL  ->  $EDITOR
+    #                     ->  code  ->  vim  ->  nvim
+    # Every candidate is split, so a value carrying arguments works
+    # (RP_EDITOR="code -n", EDITOR="code --wait") and only its first word is
+    # looked up. Without the split, reading $EDITOR would silently skip anyone
+    # whose $EDITOR has a flag in it.
+    #   "${(@z)x}"  not  ${(z)x}:  an unquoted expansion is globbed under the
+    #     user's glob_subst, and rp keeps the options of the shell it is
+    #     autoloaded into.
+    #   command -v  not  $+commands[...]:  the latter is a PATH hash and never
+    #     holds an absolute path, so it would reject EDITOR=/usr/bin/vim.
     local target_path="$1"
-    local editor="${2:-code}"
-    if command -v "$editor" > /dev/null; then
-        "$editor" "$target_path"
-    else
-        echo "Editor '$editor' not found. Trying fallback editors..."
-        if command -v code > /dev/null; then
-            code "$target_path"
-        elif command -v vim > /dev/null; then
-            vim "$target_path"
-        else
-            echo "No suitable editor found (code, vim)"
-        fi
+    local requested="${2:-}"
+    local -a parts
+    # Only an explicit `rp open <editor>` is worth reporting when it is
+    # missing. The rest of the chain is a fallback list; skipping it is its job.
+    if [[ -n "$requested" ]]; then
+        parts=("${(@z)requested}")
+        command -v "$parts[1]" > /dev/null ||
+            print -u2 "rp: editor not found: $requested"
     fi
+    local -a candidates=("$requested" "$RP_EDITOR" "$VISUAL" "$EDITOR" code vim nvim)
+    local editor
+    for editor in "$candidates[@]"; do
+        [[ -n "$editor" ]] || continue
+        parts=("${(@z)editor}")
+        command -v "$parts[1]" > /dev/null || continue
+        "$parts[@]" "$target_path"
+        return
+    done
+    print -u2 "rp: no editor found (tried ${(j:, :)${(@)candidates:#}})"
+    return 1
 }
 
 _repo_open_dest() {
@@ -247,11 +266,58 @@ _repo_hub_new_name() {
     _repo_qualify_host "$name"
 }
 
+_repo_preview() {
+    # Resolves the preview templates once. Writes preview_local /
+    # preview_remote into the caller's scope, the way _repo_parse_tmux_opt
+    # writes $tmux_mode.
+    #
+    # Template contract, the one the hub already used internally: {} is the
+    # selected host/user/repo and $RP_ROOT is the ghq root, so every caller
+    # exports RP_ROOT for fzf's child shell. The local defaults are
+    # single-quoted for that reason -- $RP_ROOT has to reach the child, not be
+    # expanded here. The remote default is double-quoted instead, because its
+    # gh template needs literal {{ }} and single quotes of its own.
+    #
+    # --preview-window is not resolved here: each picker keeps its own default
+    # at its own call site, and RP_PREVIEW_WINDOW overrides all of them.
+    preview_local="$RP_PREVIEW_CMD"
+    if [[ -z "$preview_local" ]]; then
+        if (( $+commands[eza] )); then
+            preview_local='eza "$RP_ROOT"/{} --color=always'
+        else
+            preview_local='ls -la "$RP_ROOT"/{}'
+        fi
+    fi
+    preview_remote="$RP_PREVIEW_REMOTE_CMD"
+    [[ -n "$preview_remote" ]] ||
+        preview_remote="gh repo view {} --json description,url,pushedAt --template '{{.description}}\n{{.url}}\nLast updated: {{.pushedAt}}'"
+}
+
+# Written by _repo_preview, which the picker branches call. Declared here so
+# the branches do not each have to; nothing reads RP_PREVIEW* until one does.
+local preview_local="" preview_remote=""
+
+_repo_key_label() {
+    # fzf key name -> footer label. Anything that is not a plain ctrl- or alt-
+    # chord (f5, shift-delete, ctrl-alt-x) is shown verbatim: inventing ^M-X
+    # would be less recognisable than the name the user typed.
+    # The case patterns are source literals, so the value is only ever the
+    # subject of the match, never a pattern.
+    local key="$1"
+    case "$key" in
+        ctrl-?) print -r -- "^${(U)key#ctrl-}" ;;
+        alt-?)  print -r -- "M-${key#alt-}" ;;
+        *)      print -r -- "$key" ;;
+    esac
+}
+
 _repo_hub_footer() {
     # key label ... -> one footer line. The key carries the colour and the
     # label stays dim: a footer is scanned for the key, not read.
     # Re-emitted inside change-footer(...), so the result must stay one line
     # and contain none of  +  )  }
+    # Keys reach this from RP_KEY_*, so that is enforced upstream, by the
+    # whitelist in _repo_hub_keys_validate rather than by anything here.
     # GREEN before BOLD, never the reverse: GREEN starts with a 0 (reset all),
     # which would switch the bold straight back off.
     local out=""
@@ -304,10 +370,100 @@ _repo_hub_menu() {
             --footer="$(_repo_hub_footer esc cancel)" --footer-border
 }
 
+# Hub actions in footer order. Never iterate an associative array to build the
+# footer: hash order is arbitrary, and this order is deliberate.
+local -a rp_key_ids=(session window actions new remove toggle)
+
+_repo_hub_keys() {
+    # Resolves the hub key bindings. Writes keys / klabs into the caller's
+    # scope, the way _repo_parse_tmux_opt writes $tmux_mode.
+    #
+    # Never fails, and validates nothing: `rp help` renders these labels and
+    # has to work in a broken environment, which is why it also skips the
+    # required-command check above. _repo_hub_keys_validate is the gate, and
+    # only the hub calls it.
+    #
+    # Spelled out rather than looped over RP_KEY_${(U)id}, so that grepping
+    # this file for RP_KEY_SESSION finds the line that reads it. Empty means
+    # default, not "unbind": dropping a key would have to drop its footer entry
+    # too, and RP_KEY_REMOVE=f12 already parks one out of the way.
+    keys=(
+        session "${RP_KEY_SESSION:-ctrl-s}"
+        window  "${RP_KEY_WINDOW:-ctrl-t}"
+        actions "${RP_KEY_ACTIONS:-ctrl-o}"
+        new     "${RP_KEY_NEW:-ctrl-r}"
+        remove  "${RP_KEY_REMOVE:-ctrl-x}"
+        toggle  "${RP_KEY_TOGGLE:-ctrl-g}"
+    )
+    # Resolved once here rather than per use: the footers, the ghost and the
+    # no-gh message all need a label, and precomputing is what makes a
+    # rebound key unable to drift from the text advertising it.
+    local id
+    for id in "$rp_key_ids[@]"; do
+        klabs[$id]="$(_repo_key_label "$keys[$id]")"
+    done
+}
+
+_repo_hub_keys_validate() {
+    # One whitelist does three jobs that fzf will not do for us. "Is this a
+    # real key" is not among them -- fzf answers that itself, with
+    # "unsupported key: f13" -- so this does not duplicate its key table. It
+    # only buys an error that names the variable at fault.
+    #
+    #   1. A key is interpolated into --bind "<key>:print(x)+accept", so
+    #      RP_KEY_SESSION='ctrl-s:abort,ctrl-x:execute(id)' installs bindings
+    #      nobody wrote, and fzf accepts it. That is the user's own shell, with
+    #      one real exception: rp exists to jump into arbitrary cloned
+    #      repositories, and a repository's .envrc is somebody else's input.
+    #   2. A label reaches a footer that gets re-emitted inside
+    #      change-footer(...) (see _repo_hub_footer and $toggle below). Letters,
+    #      digits and - cannot produce the `)+` or `),` that would end that
+    #      action list early. Constraining the key is what keeps the footer safe
+    #      by construction, instead of encoding one fzf version's parser quirks
+    #      as a list of forbidden characters.
+    #   3. Duplicates, which fzf takes silently -- see the enter seed below.
+    #
+    # The charset excludes ctrl-\ , ctrl-] , alt-<punctuation> and bare
+    # punctuation keys, so the error names what is allowed rather than leaving
+    # the exclusion a mystery.
+    #
+    # enter is not configurable, but it shares this namespace: fzf keeps one
+    # binding per key and reports nothing, so a collision would quietly disable
+    # either enter or the configured action while the footer still advertised
+    # both.
+    local -A taken=(enter "enter, which is not configurable")
+    local id name val
+    for id in "$rp_key_ids[@]"; do
+        name="RP_KEY_${(U)id}"
+        val="$keys[$id]"
+        if [[ ! "$val" =~ ^[A-Za-z0-9-]+$ ]]; then
+            # (q+) not (qq): (qq) renders an embedded newline as a real line
+            # break, which would split the message. -r is then required to
+            # keep it one line, because plain print would interpret the \n
+            # that (q+) just produced and put the break back.
+            print -ru2 "rp: $name: unsupported key name: ${(q+)val}"
+            print -u2 "rp: allowed: letters digits - (e.g. ctrl-s, alt-x, f5, shift-delete)"
+            return 1
+        fi
+        # An associative-array subscript is never glob-expanded. The right-hand
+        # side of [[ $a == $b ]] would be, under the user's glob_subst, where
+        # ctrl-s matches a stray * and reports a duplicate that is not there.
+        if [[ -n "$taken[$val]" ]]; then
+            print -u2 "rp: $name: $val is already taken by $taken[$val]"
+            return 1
+        fi
+        taken[$val]="$name"
+    done
+}
+
 _repo_hub_pick() {
     # Stage 1: pick the repository. Writes hub_query / hub_action / hub_repo
     # into the caller's scope. Returns 130 when cancelled, 1 on failure.
     local root="$(ghq root)"
+
+    local -A keys klabs
+    _repo_hub_keys
+    _repo_hub_keys_validate || return 1
 
     local -i have_gh=0
     (( $+commands[gh] )) && have_gh=1
@@ -323,35 +479,42 @@ _repo_hub_pick() {
     local cmd_remote='gh repo list --limit 100 --json nameWithOwner --jq ".[].nameWithOwner" 2>&1'
 
     # In a popup that does not outlive the picker there is nothing to cd, so
-    # enter opens a workspace and ^S would only duplicate it in the guide.
-    local -a enter_local=(enter cd '^S' "$label_session")
-    local -a enter_remote=(enter clone+cd '^S' "clone+$label_session")
+    # enter opens a workspace and the session key would only duplicate it in
+    # the guide.
+    local -a enter_local=(enter cd "$klabs[session]" "$label_session")
+    local -a enter_remote=(enter clone+cd "$klabs[session]" "clone+$label_session")
     if [[ -n "$RP_NO_CD" ]]; then
         enter_local=(enter "$label_session")
         enter_remote=(enter "clone+$label_session")
     fi
 
-    # Every ^X key is quoted: rp is autoloaded into the user's shell and keeps
-    # their options, and under extended_glob a bare ^S is a glob negation.
+    # Labels come from $klabs, never from a literal: a rebound key has to carry
+    # its own footer text with it. They no longer need the quoting a literal ^S
+    # did -- a parameter expansion in double quotes is not globbed, whatever
+    # options the shell rp is autoloaded into happens to have set.
     local footer_local="$(_repo_hub_footer \
-        "$enter_local[@]" '^T' "$label_window" '^O' actions '^R' new '^X' del)"
+        "$enter_local[@]" "$klabs[window]" "$label_window" \
+        "$klabs[actions]" actions "$klabs[new]" new "$klabs[remove]" del)"
     local footer_remote="$(_repo_hub_footer \
-        "$enter_remote[@]" '^T' "clone+$label_window" '^O' actions)"
+        "$enter_remote[@]" "$klabs[window]" "clone+$label_window" \
+        "$klabs[actions]" actions)"
     if (( have_gh )); then
-        footer_local+="  $(_repo_hub_footer '^G' remote)"
-        footer_remote+="  $(_repo_hub_footer '^G' local)"
+        footer_local+="  $(_repo_hub_footer "$klabs[toggle]" remote)"
+        footer_remote+="  $(_repo_hub_footer "$klabs[toggle]" local)"
     fi
 
     # fzf runs every template with $SHELL -c, so these bodies are POSIX:
-    # `case`, never [[ ]], which breaks under SHELL=/bin/sh.
-    local preview_local='eza "$RP_ROOT"/{} --color=always'
-    (( $+commands[eza] )) || preview_local='ls -la "$RP_ROOT"/{}'
-    local preview="case \"\$FZF_PROMPT\" in remote*) gh repo view {} --json description,url,pushedAt --template '{{.description}}\n{{.url}}\nLast updated: {{.pushedAt}}' ;; *) $preview_local ;; esac"
+    # `case`, never [[ ]], which breaks under SHELL=/bin/sh. A template
+    # carrying `;;` would close this case early, which is why the README says
+    # not to put one in RP_PREVIEW_CMD.
+    local preview_local preview_remote
+    _repo_preview
+    local preview="case \"\$FZF_PROMPT\" in remote*) $preview_remote ;; *) $preview_local ;; esac"
 
-    # ^G flips the noun source in place. fzf has no variables, so the prompt
-    # carries the state and $FZF_PROMPT reaches the transform's child. Every
-    # dynamic value arrives through the environment, so nothing here needs
-    # shell quoting.
+    # The toggle key flips the noun source in place. fzf has no variables, so
+    # the prompt carries the state and $FZF_PROMPT reaches the transform's
+    # child. Every dynamic value arrives through the environment, so nothing
+    # here needs shell quoting.
     local toggle='case "$FZF_PROMPT" in remote*) echo "change-prompt($RP_P_LOCAL)+change-footer($RP_F_LOCAL)+reload:$RP_CMD_LOCAL" ;; *) echo "change-prompt($RP_P_REMOTE)+change-footer($RP_F_REMOTE)+reload:$RP_CMD_REMOTE" ;; esac'
 
     # One --bind per option: the bodies contain commas, and commas separate
@@ -361,25 +524,35 @@ _repo_hub_pick() {
     # that would queue a token without exiting and shift the output lines.
     local enter_dest=here
     [[ -n "$RP_NO_CD" ]] && enter_dest=session
+    # Kept in its own single-quoted local, like $toggle above: interpolating
+    # the key by making this a double-quoted string would let zsh expand
+    # $FZF_QUERY to empty here, and the new-repository key would ring the bell
+    # for ever instead of creating anything.
+    local new_body='transform{ [ -n "$FZF_QUERY" ] && echo "print(new)+accept" || echo bell }'
     local -a fzf_args=(
         --bind "enter:print($enter_dest)+accept"
-        --bind 'ctrl-s:print(session)+accept'
-        --bind 'ctrl-t:print(window)+accept'
-        --bind 'ctrl-o:print(menu)+accept'
-        --bind 'ctrl-x:print(remove)+accept'
-        --bind 'ctrl-r:transform{ [ -n "$FZF_QUERY" ] && echo "print(new)+accept" || echo bell }'
+        --bind "${keys[session]}:print(session)+accept"
+        --bind "${keys[window]}:print(window)+accept"
+        --bind "${keys[actions]}:print(menu)+accept"
+        --bind "${keys[remove]}:print(remove)+accept"
+        --bind "${keys[new]}:$new_body"
     )
     if (( have_gh )); then
-        fzf_args+=(--bind "ctrl-g:transform{$toggle}")
+        fzf_args+=(--bind "${keys[toggle]}:transform{$toggle}")
     else
-        # The guide omits ^G, but the key should say why rather than do nothing.
-        fzf_args+=(--bind "ctrl-g:change-footer:rp: ^G needs gh  $footer_local")
+        # The guide omits the toggle, but the key should say why rather than do
+        # nothing.
+        fzf_args+=(--bind "${keys[toggle]}:change-footer:rp: $klabs[toggle] needs gh  $footer_local")
     fi
     # A path may hold any character, so it goes in --header, which is never
     # re-emitted inside an action list.
     (( $#repos )) || fzf_args+=(--header "rp: no repositories under $root")
 
     local out
+    # These RP_* are internal transport into fzf's child shells, not
+    # configuration: each one is overwritten here, so setting RP_F_LOCAL in the
+    # environment does nothing. Only RP_KEY_*, RP_PREVIEW* and RP_EDITOR are
+    # public, plus RP_NO_CD as an input from herdr/pane.zsh.
     out=$( { (( $#repos )) && print -rl -- "$repos[@]" } |
         RP_ROOT="$root" \
         RP_P_LOCAL="local> " RP_P_REMOTE="remote> " \
@@ -388,11 +561,11 @@ _repo_hub_pick() {
         fzf --height=~50% \
             --print-query \
             --prompt="local> " \
-            --ghost="filter, or type a new name and press ^R" \
+            --ghost="filter, or type a new name and press $klabs[new]" \
             --footer="$footer_local" \
             --footer-border \
             --preview="$preview" \
-            --preview-window=down:5:wrap \
+            --preview-window="${RP_PREVIEW_WINDOW:-down:5:wrap}" \
             "$fzf_args[@]" )
     local -i rc=$?
 
@@ -522,7 +695,8 @@ case "$action" in
     "list"|"ls")
         # List all repositories with fzf selection
         local selected_repo
-        selected_repo=$(ghq list | fzf --height=~20% --preview="eza $(ghq root)/{} --color=always" --preview-window=down:3:wrap)
+        _repo_preview
+        selected_repo=$(ghq list | RP_ROOT="$(ghq root)" fzf --height=~20% --preview="$preview_local" --preview-window="${RP_PREVIEW_WINDOW:-down:3:wrap}")
         if [[ -n "$selected_repo" ]]; then
             echo "Selected: $selected_repo"
             echo "Path: $(ghq root)/$selected_repo"
@@ -539,7 +713,8 @@ case "$action" in
             selected_repo=$(ghq list | fzf --filter="$fuzzy_query" | head -1)
         else
             # Interactive mode: open fzf selector
-            selected_repo=$(ghq list | fzf --height=~20% --preview="eza $(ghq root)/{} --color=always" --preview-window=down:3:wrap)
+            _repo_preview
+            selected_repo=$(ghq list | RP_ROOT="$(ghq root)" fzf --height=~20% --preview="$preview_local" --preview-window="${RP_PREVIEW_WINDOW:-down:3:wrap}")
         fi
         if [[ -n "$selected_repo" ]]; then
             _repo_open_dest "${tmux_mode:-here}" "$(ghq root)/$selected_repo"
@@ -554,7 +729,8 @@ case "$action" in
             selected_repo=$(ghq list | fzf --filter="$fuzzy_query" | head -1)
         else
             # Interactive mode: open fzf selector
-            selected_repo=$(ghq list | fzf --height=~20% --preview="eza $(ghq root)/{} --color=always" --preview-window=down:3:wrap)
+            _repo_preview
+            selected_repo=$(ghq list | RP_ROOT="$(ghq root)" fzf --height=~20% --preview="$preview_local" --preview-window="${RP_PREVIEW_WINDOW:-down:3:wrap}")
         fi
         if [[ -n "$selected_repo" ]]; then
             echo "$(ghq root)/$selected_repo"
@@ -563,7 +739,8 @@ case "$action" in
     "remove"|"rm"|"r")
         # Remove selected repository
         local selected_repo
-        selected_repo=$(ghq list | fzf --height=50% --preview="eza $(ghq root)/{} --color=always" --preview-window=down:3:wrap --prompt="Select repository to remove: ")
+        _repo_preview
+        selected_repo=$(ghq list | RP_ROOT="$(ghq root)" fzf --height=50% --preview="$preview_local" --preview-window="${RP_PREVIEW_WINDOW:-down:3:wrap}" --prompt="Select repository to remove: ")
         if [[ -n "$selected_repo" ]]; then
             _repo_remove_confirmed "$selected_repo"
         fi
@@ -576,7 +753,8 @@ case "$action" in
         if [[ -z "$2" ]]; then
             # Interactive mode: show remote repositories via gh + fzf
             local selected_repo
-            selected_repo=$(gh repo list --limit 100 --json nameWithOwner --jq '.[].nameWithOwner' | fzf --height=50% --preview="gh repo view {} --json description,url,pushedAt --template '{{.description}}\n{{.url}}\nLast updated: {{.pushedAt}}'" --preview-window=down:5:wrap --prompt="Select repository to clone: ")
+            _repo_preview
+            selected_repo=$(gh repo list --limit 100 --json nameWithOwner --jq '.[].nameWithOwner' | fzf --height=50% --preview="$preview_remote" --preview-window="${RP_PREVIEW_WINDOW:-down:5:wrap}" --prompt="Select repository to clone: ")
             if [[ -n "$selected_repo" ]]; then
                 full_path="$(ghq root)/github.com/$selected_repo"
                 ghq get "github.com/$selected_repo" || return 1
@@ -618,16 +796,42 @@ case "$action" in
         _repo_open_dest "${tmux_mode:-here}" "$(ghq root)/$repo_path"
         ;;
     "open"|"o")
-        # Open repository in editor (default: code)
-        local editor="${2:-code}"
+        # Open repository in editor. An empty $2 lets _repo_editor_open resolve
+        # the chain ($RP_EDITOR, $VISUAL, $EDITOR, then code), so no default
+        # belongs here.
+        local editor="${2:-}"
         local selected_repo
-        selected_repo=$(ghq list | fzf --height=50% --preview="eza $(ghq root)/{} --color=always" --preview-window=down:3:wrap)
+        _repo_preview
+        selected_repo=$(ghq list | RP_ROOT="$(ghq root)" fzf --height=50% --preview="$preview_local" --preview-window="${RP_PREVIEW_WINDOW:-down:3:wrap}")
         if [[ -n "$selected_repo" ]]; then
             _repo_open_dest editor "$(ghq root)/$selected_repo" "$editor"
         fi
         ;;
     "help"|"h"|*)
-        # Show help
+        # Show help.
+        # Labels are resolved but deliberately not validated: help is the one
+        # action that has to render in a broken environment, which is why it
+        # also skips the required-command check at the top of this file.
+        local -A keys klabs
+        _repo_hub_keys
+        # The key column is hand-padded in the heredoc below, which only works
+        # while every label is as short as ^S. shift-delete is twelve columns,
+        # so build these lines with a width instead. Pad the plain label and
+        # wrap the result in colour, never the other way round: a printf width
+        # counts the escape bytes.
+        local hub_keys="" hk_id hk_text
+        for hk_id in enter "$rp_key_ids[@]"; do
+            case "$hk_id" in
+                enter)   hk_text="cd to the selected repository" ;;
+                session) hk_text="Open it as a session (tmux session / herdr workspace)" ;;
+                window)  hk_text="Open it in a new window (tmux window / herdr tab)" ;;
+                actions) hk_text="Choose from every action, including copy path and remove" ;;
+                new)     hk_text="Create the repository named by what you typed" ;;
+                remove)  hk_text="Delete it (asks first; refuses anything not cloned)" ;;
+                toggle)  hk_text="Switch between local repositories and your GitHub ones" ;;
+            esac
+            hub_keys+="  ${GREEN}$(printf '%-24s' "${klabs[$hk_id]:-enter}")${NC}${hk_text}"$'\n'
+        done
         cat << EOF
 ${BOLD}Repository management with ghq and fzf${NC}
 
@@ -649,18 +853,11 @@ ${CYAN}Commands:${NC}
   ${GREEN}create, new, n${NC} ${YELLOW}[-s|-w]${NC}  Create and initialize a new repository
                           Use ${YELLOW}-s${NC}, ${YELLOW}--tmux-session${NC} to open a session (tmux session / herdr workspace)
                           Use ${YELLOW}-w${NC}, ${YELLOW}--tmux-window${NC} to open in a new window (tmux window / herdr tab)
-  ${GREEN}open, o${NC} ${YELLOW}[editor]${NC}        Open repository in editor (default: code)
+  ${GREEN}open, o${NC} ${YELLOW}[editor]${NC}        Open repository in editor (default: \$EDITOR, then code)
   ${GREEN}help, h${NC}                 Show this help message
 
 ${CYAN}Hub mode keys${NC} ${GRAY}(bare ${NC}rp${GRAY}, or ${NC}rp hub${GRAY}):${NC}
-  ${GREEN}enter${NC}                   cd to the selected repository
-  ${GREEN}^S${NC}                      Open it as a session (tmux session / herdr workspace)
-  ${GREEN}^T${NC}                      Open it in a new window (tmux window / herdr tab)
-  ${GREEN}^O${NC}                      Choose from every action, including copy path and remove
-  ${GREEN}^R${NC}                      Create the repository named by what you typed
-  ${GREEN}^X${NC}                      Delete it (asks first; refuses anything not cloned)
-  ${GREEN}^G${NC}                      Switch between local repositories and your GitHub ones
-  ${GRAY}A pick that is not cloned yet is cloned first, whichever action you choose.${NC}
+${hub_keys}  ${GRAY}A pick that is not cloned yet is cloned first, whichever action you choose.${NC}
 
 ${CYAN}Examples:${NC}
   ${GRAY}# -s/-w auto-select the multiplexer (herdr inside herdr, otherwise tmux):${NC}
@@ -685,11 +882,21 @@ ${CYAN}Examples:${NC}
   rp create -s user/new-repo  ${GRAY}# Create and open in a new tmux session / herdr workspace${NC}
   rp create -w user/new-repo  ${GRAY}# Create and open in a new tmux window / herdr tab${NC}
   rp remove             ${GRAY}# Remove selected repository${NC}
-  rp open               ${GRAY}# Open repository in code (default)${NC}
+  rp open               ${GRAY}# Open in \$RP_EDITOR, \$VISUAL, \$EDITOR, then code${NC}
   rp open vim           ${GRAY}# Open repository in vim${NC}
   rp open nvim          ${GRAY}# Open repository in neovim${NC}
 
-${CYAN}Requirements:${NC} ghq, fzf (0.63.0+), git, gh (get and ^G), jq + herdr (for -s/-w inside herdr)
+${CYAN}Configuration${NC} ${GRAY}(environment variables; see README for detail):${NC}
+  ${GREEN}RP_EDITOR${NC}               Editor for ${YELLOW}open${NC}, before \$VISUAL and \$EDITOR
+  ${GREEN}RP_PREVIEW_CMD${NC}          Preview command. {} is host/user/repo, \$RP_ROOT the ghq root
+  ${GREEN}RP_PREVIEW_REMOTE_CMD${NC}   Preview command for the GitHub listing
+  ${GREEN}RP_PREVIEW_WINDOW${NC}       fzf ${YELLOW}--preview-window${NC} spec
+  ${GREEN}RP_KEY_SESSION${NC} ${GREEN}RP_KEY_WINDOW${NC} ${GREEN}RP_KEY_ACTIONS${NC}
+  ${GREEN}RP_KEY_NEW${NC} ${GREEN}RP_KEY_REMOVE${NC} ${GREEN}RP_KEY_TOGGLE${NC}
+                          Hub mode keys, as fzf key names (letters digits -)
+  ${GRAY}Export them, not just set them: the herdr popup runs rp in its own process.${NC}
+
+${CYAN}Requirements:${NC} ghq, fzf (0.63.0+), git, gh (get and ${klabs[toggle]}), jq + herdr (for -s/-w inside herdr)
 EOF
             ;;
 esac

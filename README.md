@@ -319,6 +319,29 @@ To hack on it, link a checkout instead of installing:
 ## FAQ
 
 <details>
+<summary><b>What is <code>rp</code>, and why that name?</b></summary>
+
+Short for *repo* — which is what the function was called until it was
+shortened, and what its helpers are still called internally
+(`_repo_hub_pick`, `_repo_open_dest`, and so on).
+
+It is one entry point for everything you do with a repository you have cloned:
+`cd` to it, print its path, clone a new one, create one, open it in an editor,
+copy its path, remove it. A zsh function over
+[ghq](https://github.com/x-motemen/ghq) and
+[fzf](https://github.com/junegunn/fzf), so the list you pick from is
+`ghq list` and the picking is fzf.
+
+It works in both directions. Name the action and then pick the repository
+(`rp cd -s foo`), or run bare `rp` — hub mode — to pick the repository first
+and choose what to do with it after.
+
+Where the result opens is a third choice, independent of the other two: this
+shell, a tmux session or window, a herdr workspace or tab, or an editor.
+
+</details>
+
+<details>
 <summary><b>How is this different from zoxide, or from <code>ghq list | fzf</code>?</b></summary>
 
 `ghq` already knows where every repository on your disk is. `rp` is the front

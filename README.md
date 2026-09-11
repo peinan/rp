@@ -43,10 +43,10 @@ through a subcommand, and hub mode says so when the fzf it finds is too old.
 | Command | Needed for | Without it |
 | --- | --- | --- |
 | [`gh`](https://cli.github.com/) | `rp get` with no argument, and `^G` in hub mode (pick from your remote repos) | Pass a URL to `rp get` explicitly; `^G` is left out of hub mode |
-| [`eza`](https://github.com/eza-community/eza) | Directory preview inside fzf | Falls back to `ls -la` |
+| [`eza`](https://github.com/eza-community/eza) | Directory preview inside fzf | Falls back to `ls -la`, or whatever [`RP_PREVIEW_CMD`](#configuration) names |
 | [`tmux`](https://github.com/tmux/tmux) | `-s` / `-w` outside herdr | Omit `-s` / `-w` |
 | [`herdr`](https://herdr.dev) + [`jq`](https://jqlang.github.io/jq/) | `-s` / `-w` inside herdr | Omit `-s` / `-w` |
-| `code` / `vim` / `nvim` | `rp open` | `rp open` falls back through the list |
+| `code` / `vim` / `nvim` | `rp open` | `rp open` falls back through the list, after [`$RP_EDITOR`, `$VISUAL` and `$EDITOR`](#configuration) |
 
 ## Installation
 
@@ -146,10 +146,13 @@ Commands:
   remove, rm, r           Remove selected repository (with confirmation)
   get, g [-s|-w] [url]    Clone repository (interactive if no url)
   create, new, n [-s|-w]  Create and initialize a new repository
-  open, o [editor]        Open repository in editor (default: code)
+  open, o [editor]        Open repository in editor (default: $EDITOR, then code)
   help, h                 Show this help message
   --version, -v           Print the version
 ```
+
+`rp help` also lists the [`RP_*` environment variables](#configuration) and the
+hub keys they are currently bound to.
 
 A bare word that is not a subcommand is treated as a fuzzy query, so `rp dot`
 means `rp cd dot`.
@@ -161,15 +164,19 @@ and then asks what to do with the one you pick. `enter` does what bare `rp` has
 always done, so the common path is unchanged; the other keys reach the rest
 without needing a subcommand. `rp hub` is the same thing, spelled out.
 
-| Key | Action |
-| --- | --- |
-| `enter` | `cd` to it |
-| `^S` | Open it as a session (tmux session / herdr workspace) |
-| `^T` | Open it in a new window (tmux window / herdr tab) |
-| `^O` | Choose from every action, including `copy path` and `remove` |
-| `^R` | Create the repository named by what you typed |
-| `^X` | Delete it (asks first, and refuses anything not cloned) |
-| `^G` | Switch between your local repositories and your GitHub ones |
+Every key but `enter` is a default you can change — see
+[Configuration](#configuration). `rp help` prints whichever keys are actually
+bound.
+
+| Key | `RP_KEY_*` | Action |
+| --- | --- | --- |
+| `enter` | — | `cd` to it |
+| `^S` | `RP_KEY_SESSION` | Open it as a session (tmux session / herdr workspace) |
+| `^T` | `RP_KEY_WINDOW` | Open it in a new window (tmux window / herdr tab) |
+| `^O` | `RP_KEY_ACTIONS` | Choose from every action, including `copy path` and `remove` |
+| `^R` | `RP_KEY_NEW` | Create the repository named by what you typed |
+| `^X` | `RP_KEY_REMOVE` | Delete it (asks first, and refuses anything not cloned) |
+| `^G` | `RP_KEY_TOGGLE` | Switch between your local repositories and your GitHub ones |
 
 Picking something that is not cloned yet — anything from `^G`, in practice —
 clones it first, whichever action you chose. The action menu behind `^O` is
@@ -182,7 +189,8 @@ herdr.
 `^R` creates it. Names are checked before anything touches the disk, and the
 destination is chosen after, so cancelling leaves nothing behind.
 
-Two of these override an fzf default: `^R` replaces `down-match` (arrow keys and
+Whatever you bind here replaces fzf's own binding for that key. With the
+defaults that happens twice: `^R` replaces `down-match` (arrow keys and
 `alt-down` still work), and `^G` replaces one of four `abort` keys (`esc`, `^C`
 and `^Q` remain).
 
@@ -209,6 +217,71 @@ rp create user/new-repo         # mkdir + git init under $(ghq root)
 rp open nvim                    # pick a repository and open it in neovim
 rp remove                       # pick a repository and delete it (asks first)
 ```
+
+## Configuration
+
+Everything is an environment variable, so `.zshrc` is the only place you need.
+**`export` them rather than just setting them**: the herdr popup runs `rp` in a
+process the herdr daemon spawned, not in your shell, so a plain assignment
+reaches your prompt but not the popup — and an `export` only reaches herdr if
+herdr was started after it.
+
+### Editor
+
+`rp open` walks one chain and uses the first command it finds:
+
+```text
+rp open <editor>  →  $RP_EDITOR  →  $VISUAL  →  $EDITOR  →  code  →  vim  →  nvim
+```
+
+```zsh
+export RP_EDITOR="code -n"   # arguments are fine; only the first word is looked up
+```
+
+A value may be an absolute path, and a stale one does not dead-end the chain —
+`rp` moves on to the next candidate.
+
+### Preview
+
+| Variable | Default |
+| --- | --- |
+| `RP_PREVIEW_CMD` | `eza "$RP_ROOT"/{} --color=always`, or `ls -la "$RP_ROOT"/{}` without `eza` |
+| `RP_PREVIEW_REMOTE_CMD` | `gh repo view {} …`, for the GitHub listing behind `^G` and `rp get` |
+| `RP_PREVIEW_WINDOW` | unset: every picker keeps its own (`down:3:wrap`, `down:5:wrap` for the remote ones) |
+
+fzf runs the template with `$SHELL -c`. `{}` is the selected `host/user/repo`
+and `$RP_ROOT` is `$(ghq root)` — quote it, since a path may contain spaces:
+
+```zsh
+export RP_PREVIEW_CMD='onefetch "$RP_ROOT"/{} 2>/dev/null || ls -la "$RP_ROOT"/{}'
+```
+
+Keep `;;` out of it: hub mode embeds both templates in one `case`, so a `;;`
+would close it early.
+
+### Hub mode keys
+
+Use fzf's key names — `ctrl-s`, `alt-x`, `f5`, `shift-delete`:
+
+```zsh
+export RP_KEY_REMOVE=f12     # park the destructive key out of reach
+export RP_KEY_TOGGLE=alt-g
+```
+
+- Names are limited to letters, digits and `-`. That covers every `ctrl-`,
+  `ctrl-alt-` and `alt-` chord, every function key and every named key; it
+  leaves out the punctuation keys, because a key name also becomes footer text.
+- `enter` is not configurable, and binding something else to it is an error
+  rather than a binding fzf would drop without a word.
+- So is two actions on one key, for the same reason.
+- Empty means "use the default", not "unbind" — there is no way to remove a
+  key. `RP_KEY_REMOVE=f12` is how you get `^X` out of the way.
+- A bare single character (`RP_KEY_NEW=x`) is a valid fzf key but makes the
+  filter box unusable: the key fires instead of the character being typed.
+
+`rp` checks these when hub mode starts and names the variable at fault, so a
+typo cannot reach fzf. No other subcommand reads them, so a bad `RP_KEY_*`
+leaves `rp path` and `rp cd` working.
 
 ## Herdr plugin
 
@@ -237,10 +310,10 @@ description = "jump to a ghq repository"
 | `rp.hub` | Opens hub mode in a popup: pick a repository, then choose what to do with it |
 
 One binding reaches everything, because the keys live inside the picker rather
-than in the manifest — `enter` opens a workspace, `^T` a tab, `^O` the full
-action list, `^R` creates, `^X` deletes, `^G` switches to your GitHub
-repositories. See [Hub mode](#hub-mode). Adding an operation to `rp` costs no
-new action, pane, or key binding.
+than in the manifest — with the defaults, `enter` opens a workspace, `^T` a tab,
+`^O` the full action list, `^R` creates, `^X` deletes, `^G` switches to your
+GitHub repositories. See [Hub mode](#hub-mode). Adding an operation to `rp`
+costs no new action, pane, or key binding.
 
 The one difference from a prompt: a popup does not outlive the picker, so there
 is nothing to `cd`. `cd here` is left out and `enter` opens a workspace instead.
@@ -249,6 +322,8 @@ The plugin runs its own copy of `functions/rp` from the herdr-managed checkout, 
 it does not need the zsh plugin to be installed. `rp cd` and `rp path` stay
 zsh-only: a plugin process cannot change your shell's directory. `ghq`, `fzf`,
 `git` and `jq` must be on the `PATH` herdr was started with, plus `gh` for `^G`.
+`RP_*` must be in its environment too — see
+[Configuration](#configuration).
 
 To hack on it, link a checkout instead of installing: `herdr plugin link /path/to/rp`.
 

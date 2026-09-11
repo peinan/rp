@@ -13,10 +13,11 @@ description = "Jump between ghq-managed repositories with fzf"
 # functions/rp is zsh, which the Windows beta does not have.
 platforms = ["linux", "macos"]
 
-# One action, because hub mode reaches every operation from inside the picker:
-# enter opens a workspace, ^T a tab, ^O the full action list, ^R creates, ^X
-# deletes, ^G switches to your GitHub repositories. Adding an operation to rp no
-# longer costs an action here, a pane, or a key binding. Bind it with:
+# One action, because hub mode reaches every operation from inside the picker.
+# With the default keys: enter opens a workspace, ^T a tab, ^O the full action
+# list, ^R creates, ^X deletes, ^G switches to your GitHub repositories; RP_KEY_*
+# rebinds any of them. Adding an operation to rp no longer costs an action here,
+# a pane, or a key binding. Bind it with:
 #
 #   [[keys.command]]
 #   key = "prefix+ctrl+r"

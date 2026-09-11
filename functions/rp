@@ -5,6 +5,10 @@
 #
 
 
+# Bumped in the release commit, together with herdr-plugin.toml's version and
+# the tag it is released under.
+local RP_VERSION=0.3.1
+
 local BOLD=$'\033[1m'
 local GREEN=$'\033[0;32m'
 local YELLOW=$'\033[0;33m'
@@ -17,6 +21,9 @@ local query=""
 case "$action" in
     hub|list|ls|cd|c|path|p|remove|rm|r|get|g|create|new|n|open|o|help|h)
         ;;
+    -v|--version)
+        action="version"
+        ;;
     -*)
         action="help"
         ;;
@@ -27,7 +34,7 @@ case "$action" in
 esac
 
 # Required commands. This file is autoloaded, so this never runs at shell startup.
-if [[ "$action" != "help" ]]; then
+if [[ "$action" != "help" && "$action" != "version" ]]; then
     local -a missing=()
     local cmd
     for cmd in ghq fzf git; do
@@ -49,6 +56,29 @@ _repo_require() {
     done
     (( $#lacking )) || return 0
     print -u2 "rp: missing required command(s): ${(j:, :)lacking}"
+    return 1
+}
+
+_repo_require_fzf_version() {
+    # Hub mode needs --footer / --footer-border / change-footer, which arrived in
+    # fzf 0.63.0. fzf treats an unknown option as a hard error, so without this
+    # the picker does not degrade: it fails on every invocation with "unknown
+    # option: --footer" scrolling past on stderr. The verb-noun subcommands use
+    # only long-standing options, which is why the floor is checked here and not
+    # with the required commands above.
+    #
+    # `command fzf`: herdr/pane.zsh wraps fzf in a function to append --height,
+    # and a version query has no business going through it.
+    local ver="$(command fzf --version 2>/dev/null)"
+    ver="${ver%% *}"    # "0.74.3 (Homebrew)" -> "0.74.3"
+    # An fzf that does not print a parseable version must not be locked out of
+    # hub mode — and is-at-least reads an empty version as new enough anyway.
+    [[ -n "$ver" ]] || return 0
+    # Ships with every zsh. Compares numerically, so 0.9.0 does not beat 0.63.0.
+    autoload -Uz is-at-least
+    is-at-least 0.63.0 "$ver" && return 0
+    print -u2 "rp: hub mode needs fzf 0.63.0 or newer (found $ver)"
+    print -u2 "rp: upgrade fzf, or use a subcommand (rp cd, rp get, ...) instead"
     return 1
 }
 
@@ -428,7 +458,10 @@ _repo_hub_pick() {
 case "$action" in
     "hub")
         # Noun-verb entry point: pick the repository first, then the action on
-        # it. Declared before _repo_hub_pick runs, which writes into this scope.
+        # it. The fzf floor is checked before anything else runs, so an old fzf
+        # costs one `fzf --version` and no work that has to be undone.
+        _repo_require_fzf_version || return 1
+        # Declared before _repo_hub_pick runs, which writes into this scope.
         local hub_query="" hub_action="" hub_repo=""
         local hub_root="$(ghq root)"
         # -s/-w mean herdr inside herdr and tmux outside, so the guide has to
@@ -626,6 +659,9 @@ case "$action" in
             _repo_open_dest editor "$(ghq root)/$selected_repo" "$editor"
         fi
         ;;
+    "version")
+        echo "rp $RP_VERSION"
+        ;;
     "help"|"h"|*)
         # Show help
         cat << EOF
@@ -651,6 +687,7 @@ ${CYAN}Commands:${NC}
                           Use ${YELLOW}-w${NC}, ${YELLOW}--tmux-window${NC} to open in a new window (tmux window / herdr tab)
   ${GREEN}open, o${NC} ${YELLOW}[editor]${NC}        Open repository in editor (default: code)
   ${GREEN}help, h${NC}                 Show this help message
+  ${GREEN}--version, -v${NC}           Print the version
 
 ${CYAN}Hub mode keys${NC} ${GRAY}(bare ${NC}rp${GRAY}, or ${NC}rp hub${GRAY}):${NC}
   ${GREEN}enter${NC}                   cd to the selected repository
@@ -689,7 +726,7 @@ ${CYAN}Examples:${NC}
   rp open vim           ${GRAY}# Open repository in vim${NC}
   rp open nvim          ${GRAY}# Open repository in neovim${NC}
 
-${CYAN}Requirements:${NC} ghq, fzf (0.63.0+), git, gh (get and ^G), jq + herdr (for -s/-w inside herdr)
+${CYAN}Requirements:${NC} ghq, fzf (0.63.0+ for hub mode), git, gh (get and ^G), jq + herdr (for -s/-w inside herdr)
 EOF
             ;;
 esac

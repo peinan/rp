@@ -2,9 +2,9 @@
 
 # rp
 
-**Jump, clone, create and open repositories without breaking your flow.**
-
 <!-- demo: a GIF of hub mode goes here (#7) -->
+
+**Jump, clone, create and open repositories without breaking your flow.**
 
 </div>
 

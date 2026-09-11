@@ -2,7 +2,7 @@
 
 # rp
 
-Jump between your [ghq](https://github.com/x-motemen/ghq)-managed repositories with [fzf](https://github.com/junegunn/fzf).
+**Every repository, every operation, one keypress away.**
 
 <!-- demo: a GIF of hub mode goes here (#7) -->
 
@@ -26,6 +26,28 @@ $ rp dot            # fuzzy match and cd to the best match
 $ rp path dot       # print the path instead of cd-ing
 $ rp get -w x/y     # clone and open in a new window
 ```
+
+## Why rp?
+
+`ghq` already knows where every repository on your disk is. `rp` is the front
+end for acting on that list.
+
+- **ghq-native.** `ghq list` and `ghq root` are the source of truth, so what you
+  can reach is exactly what you have cloned. There is no frecency database to
+  warm up and nothing to import, and a fresh machine works the moment `ghq get`
+  has run once. zoxide answers *where have I been*; `rp` answers *what have I
+  cloned*. Those are different questions, and using both is reasonable.
+- **It is not only `cd`.** Clone, create, open in an editor, copy the path,
+  remove — and send the result to a tmux session or window, or a herdr workspace
+  or tab, rather than only to the current shell.
+- **Both orderings.** `rp cd -s foo` when you already know which repository you
+  want; bare `rp` when you would rather pick the repository first and decide
+  what to do with it after.
+
+A `ghq list | fzf` shell function — which is what most people already have —
+covers the `cd` case, and covers it well. The moment you want "clone this one
+and open it in a new workspace", you are writing the operation × destination
+matrix yourself. That matrix is what `rp` is.
 
 ## Requirements
 

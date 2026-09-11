@@ -4,6 +4,23 @@
 # - Require: ghq, fzf, git
 #
 
+# This file is a function body autoloaded into the user's shell, so without
+# this line it runs under *their* setopt and their options decide what its code
+# means. Under ksh_arrays the unbraced "$array[@]" form used throughout stops
+# being an array expansion, and rp fails with "bad output format
+# specification", naming a line number, instead of its own messages -- `rp cd`
+# does not even cd. sh_word_split, glob_subst, nomatch and rematch_pcre each
+# reinterpret something here in their own way.
+#
+# -L scopes the reset to this function: the caller's options are restored on
+# return, and the cd that `rp cd` performs is unaffected, being a directory
+# change rather than an option.
+#
+# `autoload -Uz` does not cover this. -U suppresses alias expansion and -z
+# reads the file in zsh mode; both are about load time, not run time.
+# herdr/pane.zsh has always had this line, so the popup was protected while a
+# prompt was not.
+emulate -L zsh
 
 # Bumped in the release commit, together with herdr-plugin.toml's version and
 # the tag it is released under.
@@ -167,9 +184,10 @@ _repo_editor_open() {
     # (RP_EDITOR="code -n", EDITOR="code --wait") and only its first word is
     # looked up. Without the split, reading $EDITOR would silently skip anyone
     # whose $EDITOR has a flag in it.
-    #   "${(@z)x}"  not  ${(z)x}:  an unquoted expansion is globbed under the
-    #     user's glob_subst, and rp keeps the options of the shell it is
-    #     autoloaded into.
+    #   "${(@z)x}"  not  ${(z)x}:  an unquoted expansion is globbed under
+    #     glob_subst. The emulate at the top of this file is what keeps that
+    #     off, so this is the belt to its braces -- and the correct form
+    #     regardless.
     #   command -v  not  $+commands[...]:  the latter is a PATH hash and never
     #     holds an absolute path, so it would reject EDITOR=/usr/bin/vim.
     local target_path="$1"
@@ -476,8 +494,10 @@ _repo_hub_keys_validate() {
             return 1
         fi
         # An associative-array subscript is never glob-expanded. The right-hand
-        # side of [[ $a == $b ]] would be, under the user's glob_subst, where
-        # ctrl-s matches a stray * and reports a duplicate that is not there.
+        # side of [[ $a == $b ]] would be under glob_subst, where ctrl-s
+        # matches a stray * and reports a duplicate that is not there. The
+        # emulate at the top of this file rules that out; a subscript holds
+        # either way.
         if [[ -n "$taken[$val]" ]]; then
             print -u2 "rp: $name: $val is already taken by $taken[$val]"
             return 1
@@ -520,8 +540,8 @@ _repo_hub_pick() {
 
     # Labels come from $klabs, never from a literal: a rebound key has to carry
     # its own footer text with it. They no longer need the quoting a literal ^S
-    # did -- a parameter expansion in double quotes is not globbed, whatever
-    # options the shell rp is autoloaded into happens to have set.
+    # did -- a parameter expansion in double quotes is not globbed, and the
+    # emulate at the top of this file leaves extended_glob off anyway.
     local footer_local="$(_repo_hub_footer \
         "$enter_local[@]" "$klabs[window]" "$label_window" \
         "$klabs[actions]" actions "$klabs[new]" new "$klabs[remove]" del)"

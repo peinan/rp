@@ -12,21 +12,6 @@
 
 一个架在 [ghq](https://github.com/x-motemen/ghq) 和 [fzf](https://github.com/junegunn/fzf) 之上的 zsh 函数。先选仓库，再告诉它要做什么——也可以先指定动作。两种顺序，同一个选择器。
 
-```console
-$ rp                # pick a repository, then choose an action
-$ rp dot            # fuzzy match "dot" and cd there
-$ rp get -w x/y     # clone it and open a new window
-$ rp path dot       # print the path instead
-```
-
-## 为什么用 rp？
-
-- **不只是 `cd`**。克隆、创建、用编辑器打开、复制路径、删除——而且可以把结果送到 tmux 的会话或窗口、herdr 的工作区或标签页，而不只是当前 shell。
-- **原生基于 ghq**。`ghq list` 就是唯一的事实来源，所以你能到达的正是你已经克隆下来的：没有需要预热的 frecency 数据库，没有东西要导入，一台新机器只要运行过一次 `ghq get` 就能用。
-- **两种顺序都行**。已经知道要哪个时用 `rp cd -s foo`；更想先选、之后再决定时就用不带参数的 `rp`。
-
-zoxide 回答的是“我去过哪里”，`rp` 回答的是“我克隆了什么”。两个都用是合理的。一个 `ghq list | fzf` 函数能覆盖 `cd` 这个场景，而且覆盖得很好——但只要你想要“克隆这一个，然后在新工作区里打开它”，你就得自己把操作 × 目标这张矩阵写出来。`rp` 就是这张矩阵。
-
 ## 环境要求
 
 [`ghq`](https://github.com/x-motemen/ghq)、[`fzf`](https://github.com/junegunn/fzf) **0.63.0+**（hub 模式用到了 `--footer`；各子命令在更旧的版本上也能工作）和 `git`。`rp` 会在首次使用时指出缺的是哪一个，而不是等子命令跑到一半才失败。
@@ -286,14 +271,117 @@ description = "jump to a ghq repository"
 
 ## 常见问题
 
-**为什么 `rp` 是 shell 函数，而不是 `PATH` 上的可执行文件？**
-因为 `rp cd` 要改的，正是你当前这个 shell 的工作目录，而子进程无法 `cd` 自己的父进程。
+<details>
+<summary><b><code>rp</code> 是什么？为什么叫这个名字？</b></summary>
 
-**只支持 zsh？bash 和 fish 呢？**
-这是刻意的，原因不是上面那条 `cd` 限制——它对 bash 和 fish 同样成立，而且两者都能定义函数。真正的原因是 `functions/rp` 从头到尾都是一个 zsh autoload 函数：zsh 的参数展开（`${(@f)…}`、`${(qq)…}`、`$+commands[…]`）、`local -a` / `local -i`，以及通过动态作用域写入调用者作用域的辅助函数。移植是把这套管道重写一遍，而不是加一层兼容垫片，fish 就更远了。如果真要做，它会是一个与 shell 无关的核心，只负责输出一个决策，让每种 shell 只剩一层仅负责 `cd` 的薄包装——相关讨论在 [#10](https://github.com/peinan/rp/issues/10)。
+是“repo”的缩写——这个函数在被缩短之前就叫这个名字，它内部的辅助函数至今也还这么叫（`_repo_hub_pick`、`_repo_open_dest` 等等）。
 
-**升级了，但什么都没变。**
+它是一个统一入口，覆盖你对已克隆仓库所做的一切：`cd` 过去、打印它的路径、克隆一个新的、创建一个新的、用编辑器打开、复制路径、删除。它是一个架在 [ghq](https://github.com/x-motemen/ghq) 和 [fzf](https://github.com/junegunn/fzf) 之上的 zsh 函数，所以你挑选的那份列表就是 `ghq list`，挑选这件事则由 fzf 来做。
+
+两个方向都能用。先指定动作再选仓库（`rp cd -s foo`），或者直接运行不带参数的 `rp`——也就是 hub 模式——先选仓库，之后再决定拿它做什么。
+
+结果在哪里打开是第三个选择，和前两者互相独立：当前这个 shell、tmux 的会话或窗口、herdr 的工作区或标签页，或者一个编辑器。
+
+</details>
+
+<details>
+<summary><b>它和 zoxide、<code>ghq list | fzf</code> 相比有什么不同？</b></summary>
+
+`ghq` 已经知道你磁盘上每个仓库在哪里。`rp` 是在这份列表上执行操作的前端，真正称得上不同的有三点：
+
+- **原生基于 ghq**。`ghq list` 就是唯一的事实来源，所以你能到达的正是你已经克隆下来的：没有需要预热的 frecency 数据库，没有东西要导入，一台新机器只要运行过一次 `ghq get` 就能用。zoxide 回答的是“我去过哪里”，`rp` 回答的是“我克隆了什么”。这是两个不同的问题，两个都用是合理的。
+- **不只是 `cd`**。克隆、创建、用编辑器打开、复制路径、删除——而且可以把结果送到 tmux 的会话或窗口、herdr 的工作区或标签页，而不只是当前 shell。
+- **两种顺序都行**。已经知道要哪个时用 `rp cd -s foo`；更想先选、之后再决定时就用不带参数的 `rp`。
+
+`ghq list | fzf` 的 shell 函数能覆盖 `cd` 这个场景，而且覆盖得很好，所以大多数人手上都已经有一个了。但只要你想要“克隆这一个，然后在新工作区里打开它”，你就得自己把操作 × 目标这张矩阵写出来。`rp` 就是这张矩阵。
+
+</details>
+
+<details>
+<summary><b><code>rp</code> 和 <code>rp hub</code> 有什么区别？</b></summary>
+
+没有区别。`rp hub` 只是把不带参数的 `rp` 写全——hub 模式是默认入口，不是一条你必须敲的命令。
+
+</details>
+
+<details>
+<summary><b><code>-s</code> 和 <code>-w</code> 到底做什么？</b></summary>
+
+它们指定的是目标位置，不是操作，所以在 `cd`、`get` 和 `create` 上含义相同：`-s` 打开一个会话，`-w` 打开一个窗口。至于是哪个复用器，会自动替你决定——设置了 `$HERDR_ENV` 时用 [herdr](https://herdr.dev)，否则用 tmux——而且 `-s` 会复用同名的已有会话或工作区，不会堆出一堆重复的。见[终端复用器集成](#终端复用器集成)。
+
+</details>
+
+<details>
+<summary><b>选中一个还没克隆的仓库会怎样？</b></summary>
+
+它会先被克隆下来，然后你选的那个动作再对它执行。实际上这种情况出现在 `^G` 上——它把 hub 列表从你的本地仓库切换到你的 GitHub 仓库。
+
+</details>
+
+<details>
+<summary><b><code>rp open</code> 用的是哪个编辑器？</b></summary>
+
+沿着 `rp open <editor>` → `$RP_EDITOR` → `$VISUAL` → `$EDITOR` → `code` → `vim` → `nvim` 找到的第一个。取值可以带参数（`RP_EDITOR="code -n"`），也可以是绝对路径；即使它已经不存在，这条链也不会就此断掉——`rp` 会继续看下一个候选。见[配置](#配置)。
+
+</details>
+
+<details>
+<summary><b>hub 模式的按键能改吗？</b></summary>
+
+除 `enter` 之外都能改，用 `RP_KEY_*`，按 fzf 的按键名称来写。它们会在 hub 模式启动时被检查，`rp` 会指出出问题的是哪一个变量，所以拼写错误传不到 fzf。没有办法解除某个键的绑定——只能把它挪到够不着的地方，`RP_KEY_REMOVE=f12` 就是干这个用的。见[配置](#配置)。
+
+</details>
+
+<details>
+<summary><b>能在脚本里用吗？</b></summary>
+
+`rp path` 打印路径而不是 `cd` 过去，所以 `cd "$(rp path dot)"` 是可行的；带上查询词时，它根本不用打开选择器就能解析出结果。`rp path` 和 `rp cd` 都不读 `RP_KEY_*`，所以错误的按键绑定弄不坏它们。
+
+</details>
+
+<details>
+<summary><b>在 herdr 里能用吗？</b></summary>
+
+能。只要设置了 `$HERDR_ENV`，`-s` / `-w` 就会自动解析到 herdr，不管你有没有另外装什么。在此之上，`rp` 还以 herdr 插件的形式发布，所以一个按键绑定就能在弹窗里打开 hub 模式，并从那里到达每一个操作——见 [Herdr 插件](#herdr-插件)。
+
+</details>
+
+<details>
+<summary><b>为什么 <code>rp</code> 是 shell 函数，而不是 <code>PATH</code> 上的可执行文件？</b></summary>
+
+因为 `rp cd` 要改的，正是你当前这个 shell 的工作目录，而子进程无法 `cd` 自己的父进程。这也是升级为什么传不到一个已经运行过 `rp` 的 shell——见下文。
+
+</details>
+
+<details>
+<summary><b>只支持 zsh？bash 和 fish 呢？</b></summary>
+
+这是刻意的，原因不是上面那条 `cd` 限制——它对 bash 和 fish 同样成立，而且两者都能定义函数。真正的原因是 `functions/rp` 从头到尾都是一个 zsh autoload 函数：zsh 的参数展开（`${(@f)…}`、`${(qq)…}`、`$+commands[…]`）、`local -a` / `local -i`，以及通过动态作用域写入调用者作用域的辅助函数。移植是把这套管道重写一遍，而不是加一层兼容垫片，fish 就更远了——它的函数模型和引号规则完全是另一套。
+
+如果真要做，它会是一个与 shell 无关的核心，只负责输出一个决策，让每种 shell 只剩一层仅负责 `cd` 的薄包装。hub 模式内部已经是这个形状了，因为它的第一阶段就是打印一个 token，再由调用方据此行动。相关讨论在 [#10](https://github.com/peinan/rp/issues/10)。
+
+</details>
+
+<details>
+<summary><b>不带参数的 <code>rp</code> 没有反应，或者打印 <code>unknown option: --footer</code></b></summary>
+
+你的 `fzf` 比 0.63.0 旧。hub 模式用到了 `--footer`，而 fzf 对无法识别的选项是直接报错而不是忽略，所以每次调用都会失败。现在的 `rp` 会把这件事直接说出来。只有 hub 模式有这道门槛：动词加名词形式的子命令没有传任何这么新的东西，在老得多的 fzf 上照样能用。
+
+</details>
+
+<details>
+<summary><b>升级了，但什么都没变</b></summary>
+
 `rp` 是 autoload 的，已经运行过它的 shell 会把旧的函数体留在内存里。开一个新 shell，或者执行 `exec zsh`。
+
+</details>
+
+<details>
+<summary><b>预览窗格是空的，或者显示报错</b></summary>
+
+没有 [`eza`](https://github.com/eza-community/eza) 时，预览会回退到 `ls -la`。如果你设置了 `RP_PREVIEW_CMD`，注意：fzf 用 `$SHELL -c` 运行这个模板；`{}` 是选中的 `host/user/repo`，`$RP_ROOT` 是 `$(ghq root)` 且需要加引号；模板里的 `;;` 会让 hub 模式的 `case` 提前结束。见[配置](#配置)。
+
+</details>
 
 ## 许可证
 

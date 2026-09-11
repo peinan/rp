@@ -5,6 +5,10 @@
 #
 
 
+# Bumped in the release commit, together with herdr-plugin.toml's version and
+# the tag it is released under.
+local RP_VERSION=0.3.1
+
 local BOLD=$'\033[1m'
 local GREEN=$'\033[0;32m'
 local YELLOW=$'\033[0;33m'
@@ -17,6 +21,9 @@ local query=""
 case "$action" in
     hub|list|ls|cd|c|path|p|remove|rm|r|get|g|create|new|n|open|o|help|h)
         ;;
+    -v|--version)
+        action="version"
+        ;;
     -*)
         action="help"
         ;;
@@ -27,7 +34,7 @@ case "$action" in
 esac
 
 # Required commands. This file is autoloaded, so this never runs at shell startup.
-if [[ "$action" != "help" ]]; then
+if [[ "$action" != "help" && "$action" != "version" ]]; then
     local -a missing=()
     local cmd
     for cmd in ghq fzf git; do
@@ -626,6 +633,9 @@ case "$action" in
             _repo_open_dest editor "$(ghq root)/$selected_repo" "$editor"
         fi
         ;;
+    "version")
+        echo "rp $RP_VERSION"
+        ;;
     "help"|"h"|*)
         # Show help
         cat << EOF
@@ -651,6 +661,7 @@ ${CYAN}Commands:${NC}
                           Use ${YELLOW}-w${NC}, ${YELLOW}--tmux-window${NC} to open in a new window (tmux window / herdr tab)
   ${GREEN}open, o${NC} ${YELLOW}[editor]${NC}        Open repository in editor (default: code)
   ${GREEN}help, h${NC}                 Show this help message
+  ${GREEN}--version, -v${NC}           Print the version
 
 ${CYAN}Hub mode keys${NC} ${GRAY}(bare ${NC}rp${GRAY}, or ${NC}rp hub${GRAY}):${NC}
   ${GREEN}enter${NC}                   cd to the selected repository

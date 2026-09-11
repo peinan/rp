@@ -51,6 +51,16 @@ matrix yourself. That matrix is what `rp` is.
 
 ## Requirements
 
+**zsh only, deliberately.** The `cd` constraint above is not the reason — it
+applies to bash and fish equally, and both can define a function. The reason is
+that `functions/rp` is a zsh autoload function throughout: zsh parameter
+expansion (`${(@f)…}`, `${(qq)…}`, `$+commands[…]`), `local -a` / `local -i`,
+and helpers that write into their caller's scope through dynamic scoping. A bash
+port is a rewrite of that plumbing rather than a compatibility shim, and fish is
+further still. If it happens it will be a shell-agnostic core that prints a
+decision, leaving each shell a thin `cd`-only wrapper —
+[#10](https://github.com/peinan/rp/issues/10) is where that is discussed.
+
 **Required**
 
 | Command | Used for |

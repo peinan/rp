@@ -1,5 +1,7 @@
 <div align="center">
 
+English ・ [日本語](README.ja.md)
+
 # rp
 
 **Jump, clone, create and open repositories without breaking your flow.**

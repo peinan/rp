@@ -165,6 +165,20 @@ shorter, so there is one full list to keep current rather than two.
 A bare word that is not a subcommand is a fuzzy query, so `rp dot` means
 `rp cd dot`.
 
+### Examples
+
+```bash
+rp                              # hub mode: pick a repository, then choose an action
+rp dot                          # fuzzy match "dot" and cd to the best match
+rp cd -s dot                    # same, but in a new session / workspace
+cd "$(rp path dot)"             # use the path in command substitution
+rp get github.com/user/repo     # clone by URL
+rp get -w user/repo             # clone and open in a new window / tab
+rp create user/new-repo         # mkdir + git init under $(ghq root)
+rp open nvim                    # pick a repository and open it in neovim
+rp remove                       # pick a repository and delete it (asks first)
+```
+
 ### Hub mode
 
 Bare `rp` lists your repositories and then asks what to do with the one you

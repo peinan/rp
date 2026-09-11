@@ -6,7 +6,7 @@
 
 id = "rp"
 name = "rp"
-version = "0.3.0"
+version = "0.3.1"
 # Verified against 0.9.0: popup panes with width/height and `herdr plugin pane open`.
 min_herdr_version = "0.9.0"
 description = "Jump between ghq-managed repositories with fzf"

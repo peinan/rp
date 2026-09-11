@@ -32,11 +32,11 @@ $ rp get -w x/y     # clone and open in a new window
 | Command | Used for |
 | --- | --- |
 | [`ghq`](https://github.com/x-motemen/ghq) | Locating, cloning and listing repositories |
-| [`fzf`](https://github.com/junegunn/fzf) **0.63.0+** | Interactive selection and fuzzy matching |
+| [`fzf`](https://github.com/junegunn/fzf) | Interactive selection and fuzzy matching. Hub mode needs **0.63.0+** (it uses `--footer`); the subcommands work on older versions |
 | `git` | Initializing repositories created with `rp create` |
 
 `rp` reports which of these are missing on first use instead of failing partway
-through a subcommand.
+through a subcommand, and hub mode says so when the fzf it finds is too old.
 
 **Optional**
 
@@ -146,9 +146,13 @@ Commands:
   remove, rm, r           Remove selected repository (with confirmation)
   get, g [-s|-w] [url]    Clone repository (interactive if no url)
   create, new, n [-s|-w]  Create and initialize a new repository
-  open, o [editor]        Open repository in editor (default: code)
+  open, o [editor]        Open repository in editor (default: $EDITOR, then code)
   help, h                 Show this help message
+  --version, -v           Print the version
 ```
+
+`rp help` also lists the [`RP_*` environment variables](#configuration) and the
+hub keys they are currently bound to.
 
 A bare word that is not a subcommand is treated as a fuzzy query, so `rp dot`
 means `rp cd dot`.

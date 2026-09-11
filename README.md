@@ -4,6 +4,8 @@
 
 Jump between your [ghq](https://github.com/x-motemen/ghq)-managed repositories with [fzf](https://github.com/junegunn/fzf).
 
+<!-- demo: a GIF of hub mode goes here (#7) -->
+
 </div>
 
 `rp` is a zsh function that wraps `ghq` and `fzf` into a single entry point for
@@ -66,14 +68,17 @@ Then add to your `.zshrc`:
 source "$(brew --prefix)/share/rp/rp.plugin.zsh"
 ```
 
-### sheldon
+<details>
+<summary>Other methods — sheldon, zinit / znap / zplug, antidote, Oh My Zsh, manual</summary>
+
+**sheldon**
 
 ```toml
 [plugins.rp]
 github = "peinan/rp"
 ```
 
-### zinit / znap / zplug
+**zinit / znap / zplug**
 
 ```zsh
 zinit light peinan/rp
@@ -81,14 +86,14 @@ znap source peinan/rp
 zplug "peinan/rp"
 ```
 
-### antidote
+**antidote**
 
 ```text
 # ~/.zsh_plugins.txt
 peinan/rp
 ```
 
-### Oh My Zsh
+**Oh My Zsh**
 
 ```bash
 git clone https://github.com/peinan/rp \
@@ -100,7 +105,7 @@ git clone https://github.com/peinan/rp \
 plugins=(... rp)
 ```
 
-### Manual
+**Manual**
 
 ```bash
 git clone https://github.com/peinan/rp ~/.local/share/rp
@@ -110,6 +115,8 @@ git clone https://github.com/peinan/rp ~/.local/share/rp
 # .zshrc
 source ~/.local/share/rp/rp.plugin.zsh
 ```
+
+</details>
 
 ## Upgrading
 
@@ -131,28 +138,27 @@ already run it holds the old function body in memory and keeps using it.
 
 ## Usage
 
-```text
-Usage: rp <command> [args]
+**`rp help` is the command reference.** It prints every command, whichever hub
+keys are actually bound, and the `RP_*` variables. The table below is
+deliberately shorter than that, so there is one full command list to keep
+current rather than two.
 
-Commands:
-  (no command), hub       Hub mode: pick a repository first, then choose an action
-  list, ls                List repositories with fzf selection
-  cd, c [-s|-w] [query]   Change directory to selected repository
-                          If query is given, fuzzy match and cd to best match
-                          Use -s, --tmux-session to open a session (tmux session / herdr workspace)
-                          Use -w, --tmux-window to open in a new window (tmux window / herdr tab)
-  path, p [query]         Print path of selected repository (no cd)
-                          If query is given, fuzzy match and print best match
-  remove, rm, r           Remove selected repository (with confirmation)
-  get, g [-s|-w] [url]    Clone repository (interactive if no url)
-  create, new, n [-s|-w]  Create and initialize a new repository
-  open, o [editor]        Open repository in editor (default: $EDITOR, then code)
-  help, h                 Show this help message
-  --version, -v           Print the version
-```
+| Command | What it does |
+| --- | --- |
+| `rp`, `rp hub` | Hub mode: pick a repository, then choose an action |
+| `rp <query>` | Fuzzy match and `cd` to the best match |
+| `rp cd, c [-s\|-w] [query]` | `cd` to a repository |
+| `rp path, p [query]` | Print its path instead of `cd`-ing |
+| `rp get, g [-s\|-w] [url]` | Clone one (interactive with no URL) |
+| `rp create, new, n [-s\|-w]` | Create one and `git init` it under `$(ghq root)` |
+| `rp open, o [editor]` | Open one in an editor |
+| `rp list, ls` | List repositories |
+| `rp remove, rm, r` | Remove one (asks first) |
+| `rp --version, -v` | Print the version |
 
-`rp help` also lists the [`RP_*` environment variables](#configuration) and the
-hub keys they are currently bound to.
+`-s` and `-w` are a destination rather than part of the operation, so they mean
+the same thing on `cd`, `get` and `create` — see
+[Multiplexer integration](#multiplexer-integration).
 
 A bare word that is not a subcommand is treated as a fuzzy query, so `rp dot`
 means `rp cd dot`.
